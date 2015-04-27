@@ -1,0 +1,50 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source files">
+      <UniqueIdentifier>{4c8b6fef-f313-443a-b26d-185c6740edd5}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header files">
+      <UniqueIdentifier>{7e34cdd9-9a7e-4714-9162-29e64cd5bdab}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource files">
+      <UniqueIdentifier>{bf09ccde-43c7-4dc4-8e8f-11935851f8f3}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav</Extensions>
+    </Filter>
+    <Filter Include="Java Source Files">
+      <UniqueIdentifier>{81f74358-28e0-49ae-bb35-e54b3f50202b}</UniqueIdentifier>
+      <Extensions>*.java</Extensions>
+    </Filter>
+    <Filter Include="Java Source Files\com">
+      <UniqueIdentifier>{2357643d-94d0-4097-bd7b-a88583fd0665}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Java Source Files\com\oculusvr">
+      <UniqueIdentifier>{d71cbda2-d971-41a7-bcda-3e101b45b5b2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Java Source Files\com\oculusvr\vrscene">
+      <UniqueIdentifier>{0c9cb92f-7de5-45ac-a8ac-f6fd72f93a78}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Xml Include="AndroidManifest.xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="jni\Android.mk" />
+    <None Include="jni\Application.mk" />
+    <None Include="src\com\oculusvr\vrscene\MainActivity.java">
+      <Filter>Java Source Files\com\oculusvr\vrscene</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="jni\VrScene.cpp">
+      <Filter>Source files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="jni\VrScene.h">
+      <Filter>Header files</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

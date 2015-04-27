@@ -1,0 +1,52 @@
+CPPFLAGS=-c -O2 -g -std=gnu++0x 
+CFLAGS=-c -O2 -g
+KERNEL=../../VRLib/jni/LibOVR/Src/Kernel
+SOURCES_CPP=Fbx2Raw.cpp \
+	File_Utils.cpp \
+	Image_Utils.cpp \
+	main.cpp \
+	Raw2CollisionModel.cpp \
+	Raw2RayTraceModel.cpp \
+	Raw2RenderModel.cpp \
+	RawModel.cpp \
+	$(KERNEL)/OVR_Alg.cpp \
+	$(KERNEL)/OVR_Allocator.cpp \
+	$(KERNEL)/OVR_Atomic.cpp \
+	$(KERNEL)/OVR_File.cpp \
+	$(KERNEL)/OVR_FileFILE.cpp \
+	$(KERNEL)/OVR_Lockless.cpp \
+	$(KERNEL)/OVR_Log.cpp \
+	$(KERNEL)/OVR_Math.cpp \
+	$(KERNEL)/OVR_RefCount.cpp \
+	$(KERNEL)/OVR_Std.cpp \
+	$(KERNEL)/OVR_String.cpp \
+	$(KERNEL)/OVR_String_FormatUtil.cpp \
+	$(KERNEL)/OVR_String_PathUtil.cpp \
+	$(KERNEL)/OVR_SysFile.cpp \
+	$(KERNEL)/OVR_System.cpp \
+	$(KERNEL)/OVR_ThreadsPthread.cpp \
+	$(KERNEL)/OVR_Timer.cpp \
+	$(KERNEL)/OVR_UTF8Util.cpp \
+	$(KERNEL)/OVR_JSON.cpp
+SOURCES_C=../../VRLib/jni/3rdParty/stb/stb_image.c \
+	../../VRLib/jni/3rdParty/stb/stb_image_write.c
+OBJECTS_CPP=$(SOURCES_CPP:.cpp=.o)
+OBJECTS_C=$(SOURCES_C:.c=.o)
+EXECUTABLE=FbxConvert
+
+all: startup $(SOURCES) $(EXECUTABLE)
+
+startup:
+
+$(EXECUTABLE): $(OBJECTS_CPP) $(OBJECTS_C)
+	g++ $(OBJECTS_CPP) $(OBJECTS_C) -lfbxsdk -lpthread -ldl -o $@
+	cp $@ ../../bin/FbxConvert/Linux
+
+.cpp.o:
+	g++ $(CPPFLAGS) $< -o $@
+
+.c.o:
+	gcc $(CFLAGS) $< -o $@
+
+clean:
+	rm -rf $(OBJECTS_CPP) $(OBJECTS_C) $(EXECUTABLE)

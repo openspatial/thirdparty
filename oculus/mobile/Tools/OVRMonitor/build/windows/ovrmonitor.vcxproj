@@ -1,0 +1,90 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" InitialTargets="BuildOVRCap" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- Set the project name and the relative path to the Application folder -->
+  <PropertyGroup>
+    <ProjectRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)\..\..'))</ProjectRoot>
+    <BranchRoot>$([System.IO.Path]::GetFullPath('$(ProjectRoot)\..\..'))</BranchRoot>
+    <ProjectName>OVRMonitor</ProjectName>
+    <OVRCapRoot>$(BranchRoot)\VRLib\jni\LibOVR\Src\Capture</OVRCapRoot>
+  </PropertyGroup>
+
+  <!-- The main project file has to include this part -->
+  <ItemGroup>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.default.props" />
+
+  <PropertyGroup>
+    <ConfigurationType>Application</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <PlatformToolset>v120</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <TargetName>$(ProjectName)_$(Configuration)</TargetName>
+    <TargetPath>$(ProjectRoot)\bin\windows_$(Platform)\$(TargetName).exe</TargetPath>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>
+        $(OVRCapRoot)\include;
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <WarningLevel>Level4</WarningLevel>
+      <DisableSpecificWarnings>4100</DisableSpecificWarnings>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <ClCompile Condition="'$(Configuration)'=='Debug'">
+      <Optimization>Disabled</Optimization>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <ClCompile Condition="'$(Configuration)'=='Release'">
+      <Optimization>MaxSpeed</Optimization>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>
+        %(AdditionalLibraryDirectories)
+      </AdditionalLibraryDirectories>
+      <AdditionalDependencies>
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+      <OutputFile>$(TargetPath)</OutputFile>
+    </Link>
+    <Link Condition="'$(Configuration)'=='Debug'">
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <!-- Include all the .cpp files here -->
+  <ItemGroup>
+    <ClCompile Include="$(ProjectRoot)\src\*.cpp" />
+  </ItemGroup>
+
+  <!-- Include all the .h files here -->
+  <ItemGroup>
+    <ClInclude Include="$(ProjectRoot)\src\*.h" />
+  </ItemGroup>
+
+  <!-- Bring in default MSBuild targets... -->
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Targets" />
+
+  <!-- Import WxWidgets support into this project -->
+  <Import Project="wxconfig.props" />
+
+  <!-- Build libovrcap... although right now we don't actually need it built, but we do want to make sure it exists... -->
+  <Target Name="BuildOVRCap">
+    <Error Condition="!Exists('$(OVRCapRoot)')" Text="libovrcap not found, please sync $(OVRCapRoot)..." />
+  </Target>
+
+</Project>

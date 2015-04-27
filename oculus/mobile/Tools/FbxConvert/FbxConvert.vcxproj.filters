@@ -1,0 +1,244 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Source Files\LibOVR">
+      <UniqueIdentifier>{4e9aa222-f530-4f1b-978b-e8a40c3b969f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\LibOVR\Src">
+      <UniqueIdentifier>{b863d303-8cbc-4549-969c-494f54cf936f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\LibOVR\Include">
+      <UniqueIdentifier>{8f7596db-f130-4728-b7d5-32f57902b337}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\LibOVR\Src\Kernel">
+      <UniqueIdentifier>{3f11403d-184c-42a4-94b4-93bbd9a0d820}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\stb">
+      <UniqueIdentifier>{0bf23f61-3831-44e3-89bc-3ecf278e5c28}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Include\OVR.h">
+      <Filter>Source Files\LibOVR\Include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Include\OVRVersion.h">
+      <Filter>Source Files\LibOVR\Include</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Alg.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Allocator.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Array.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Atomic.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Color.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_ContainerAllocator.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Deque.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_File.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Hash.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_KeyCodes.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_List.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Lockless.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Log.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Math.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_RefCount.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Std.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_String.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_StringHash.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_SysFile.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_System.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Threads.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Timer.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Types.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_UTF8Util.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_JSON.h">
+      <Filter>Source Files\LibOVR\Src</Filter>
+    </ClInclude>
+    <ClInclude Include="Fbx2Raw.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Raw2CollisionModel.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Raw2RayTraceModel.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Raw2RenderModel.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RawModel.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Image_Utils.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_String_Utils.h">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClInclude>
+    <ClInclude Include="File_Utils.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ModelData.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_MappedFile.h">
+      <Filter>Source Files\LibOVR\Src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_BinaryFile.h">
+      <Filter>Source Files\LibOVR\Src</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\3rdParty\stb\stb_image.h">
+      <Filter>Source Files\stb</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\VRLib\jni\3rdParty\stb\stb_image_write.h">
+      <Filter>Source Files\stb</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Alg.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Allocator.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Atomic.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_File.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_FileFILE.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Lockless.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Log.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Math.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_RefCount.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Std.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_String.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_String_FormatUtil.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_String_PathUtil.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_SysFile.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_System.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_ThreadsWinAPI.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_Timer.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_UTF8Util.cpp">
+      <Filter>Source Files\LibOVR\Src\Kernel</Filter>
+    </ClCompile>
+    <ClCompile Include="main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\OVR_JSON.cpp">
+      <Filter>Source Files\LibOVR\Src</Filter>
+    </ClCompile>
+    <ClCompile Include="Fbx2Raw.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Raw2CollisionModel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Raw2RayTraceModel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Raw2RenderModel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RawModel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Image_Utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="TestJSON.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="File_Utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_MappedFile.cpp">
+      <Filter>Source Files\LibOVR\Src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\LibOVR\Src\Kernel\OVR_BinaryFile.cpp">
+      <Filter>Source Files\LibOVR\Src</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\3rdParty\stb\stb_image.c">
+      <Filter>Source Files\stb</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\VRLib\jni\3rdParty\stb\stb_image_write.c">
+      <Filter>Source Files\stb</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project InitialTargets="BuildWX" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!-- Set the project name and the relative path to the Application folder -->
+  <PropertyGroup>
+    <VendorRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)\..\..\..\..'))\3rdParty</VendorRoot>
+    <WxZipURL>https://sourceforge.net/projects/wxwindows/files/3.0.2/wxWidgets-3.0.2.zip</WxZipURL>
+    <WxZipFile>$(VendorRoot)\wxWidgets-3.0.2.zip</WxZipFile>
+    <WxRoot>$(VendorRoot)\wxWidgets-3.0.2</WxRoot>
+    <WxPostfix Condition="'$(Configuration)'=='Debug'">d</WxPostfix>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <!-- Required WxWidgets Compiler settings... -->
+    <ClCompile>
+      <AdditionalIncludeDirectories>
+        $(WxRoot)\include;
+        $(WxRoot)\lib\vc_x64_lib\mswu$(WxPostfix);
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Release'">MultiThreadedDLL</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)'=='Debug'">MultiThreadedDebugDLL</RuntimeLibrary>
+    </ClCompile>
+    <!-- Required WxWidgets Linker settings... -->
+    <Link>
+      <AdditionalLibraryDirectories>
+        $(WxRoot)\lib\vc_x64_lib;
+        %(AdditionalLibraryDirectories)
+      </AdditionalLibraryDirectories>
+      <AdditionalDependencies>
+        comctl32.lib;
+        rpcrt4.lib;
+        winmm.lib;
+        advapi32.lib;
+        wsock32.lib;
+        wxbase30u$(WxPostfix).lib;
+        wxbase30u$(WxPostfix)_net.lib;
+        wxbase30u$(WxPostfix)_xml.lib;
+        wxexpat$(WxPostfix).lib;
+        wxjpeg$(WxPostfix).lib;
+        wxmsw30u$(WxPostfix)_adv.lib;
+        wxmsw30u$(WxPostfix)_aui.lib;
+        wxmsw30u$(WxPostfix)_core.lib;
+        wxmsw30u$(WxPostfix)_gl.lib;
+        wxmsw30u$(WxPostfix)_html.lib;
+        wxmsw30u$(WxPostfix)_media.lib;
+        wxmsw30u$(WxPostfix)_propgrid.lib;
+        wxmsw30u$(WxPostfix)_qa.lib;
+        wxmsw30u$(WxPostfix)_ribbon.lib;
+        wxmsw30u$(WxPostfix)_richtext.lib;
+        wxmsw30u$(WxPostfix)_stc.lib;
+        wxmsw30u$(WxPostfix)_webview.lib;
+        wxmsw30u$(WxPostfix)_xrc.lib;
+        wxpng$(WxPostfix).lib;
+        wxregexu$(WxPostfix).lib;
+        wxscintilla$(WxPostfix).lib;
+        wxtiff$(WxPostfix).lib;
+        wxzlib$(WxPostfix).lib;
+        %(AdditionalDependencies)
+      </AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- General DownloadFile Task -->
+  <UsingTask TaskName="DownloadFile" TaskFactory="CodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.v4.0.dll">
+    <ParameterGroup>
+      <Address ParameterType="System.String" Required="true"/>
+      <FileName ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Reference Include="System" />
+      <Code Type="Fragment" Language="cs">
+        <![CDATA[
+            new System.Net.WebClient().DownloadFile(Address, FileName);
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <!-- General Unzip Task -->
+  <UsingTask TaskName="Unzip" TaskFactory="CodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.v4.0.dll">
+    <ParameterGroup>
+      <ZipFileName ParameterType="System.String" Required="true" />
+      <ZipOutDir      ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Reference Include="System.IO.Compression" />
+      <Reference Include="System.IO.Compression.FileSystem" />
+      <Using Namespace="System.IO.Compression" />
+      <Code Type="Fragment" Language="cs">
+      <![CDATA[        
+        using(ZipArchive archive = ZipFile.OpenRead(ZipFileName))
+        {
+          Directory.CreateDirectory(ZipOutDir);
+          foreach (ZipArchiveEntry entry in archive.Entries)
+          {
+            if(entry.FullName[entry.FullName.Length - 1] == '/')
+            {
+              Directory.CreateDirectory(Path.Combine(ZipOutDir, entry.FullName));
+            }
+            else
+            {
+              entry.ExtractToFile(Path.Combine(ZipOutDir, entry.FullName));
+            }
+          }
+        }
+      ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+
+  <!-- Download WxWidgets -->
+  <Target Name="DownloadWX" Condition="!Exists('$(WxZipFile)')">
+    <Message Importance="High" Text="Downloading $(WxZipURL)..." />
+    <MakeDir Directories="$(VendorRoot)" Condition="!Exists('$(VendorRoot)')"/>
+    <DownloadFile Address="$(WxZipURL)" FileName="$(WxZipFile)" />
+  </Target>
+
+  <!-- Extract WxWidgets -->
+  <Target Name="ExtractWX" DependsOnTargets="DownloadWX" Condition="!Exists('$(WxRoot)')">
+    <Message Importance="High" Text="Extracting $(WxZipFile) to $(WxRoot)..." />
+    <Unzip ZipFileName="$(WxZipFile)" ZipOutDir="$(WxRoot)" />
+  </Target>
+
+  <!-- Build's WxWidgets -->
+  <Target Name="BuildWX" DependsOnTargets="ExtractWX">
+    <Error Condition="!Exists('$(WxRoot)')" Text="WxWidgets not found, please sync $(WxRoot)..." />
+    <MSBuild Projects="$(WxRoot)\build\msw\wx_vc12.sln" Properties="Configuration=$(Configuration);Platform=$(Platform)"/>
+  </Target>
+
+</Project>

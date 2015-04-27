@@ -1,0 +1,79 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source files">
+      <UniqueIdentifier>{ca30112e-546a-4655-8a7f-3abce64f335a}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header files">
+      <UniqueIdentifier>{a8740a26-7134-453b-b3f3-1127a4fc373a}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Java Source Files">
+      <UniqueIdentifier>{e130f5d2-7320-4e53-b3f3-d66a3b207c0b}</UniqueIdentifier>
+      <Extensions>*.java</Extensions>
+    </Filter>
+    <Filter Include="Java Source Files\com">
+      <UniqueIdentifier>{774d1c76-0f9a-4e23-9bfc-fe8edf343c2b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Java Source Files\com\oculus">
+      <UniqueIdentifier>{8fb47db5-560c-4668-9ab7-5ec790472e35}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Java Source Files\com\oculus\oculus360photos">
+      <UniqueIdentifier>{c95854a2-b5d5-45ee-9998-074069de1da5}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Xml Include="AndroidManifest.xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="jni\FileLoader.cpp">
+      <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="jni\Oculus360Photos.cpp">
+      <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="jni\PanoMenu.cpp">
+      <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="jni\PanoBrowser.cpp">
+      <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="jni\OVR_TurboJpeg.cpp">
+      <Filter>Source files</Filter>
+    </ClCompile>
+    <ClCompile Include="jni\PhotosMetaData.cpp">
+      <Filter>Source files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="jni\Android.mk" />
+    <None Include="jni\Application.mk" />
+    <None Include="src\com\oculus\oculus360photossdk\MainActivity.java">
+      <Filter>Java Source Files\com\oculus\oculus360photos</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="jni\FileLoader.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="jni\Oculus360Photos.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="jni\PanoMenu.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="jni\PanoBrowser.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="jni\OVR_TurboJpeg.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="jni\turbojpeg.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+    <ClInclude Include="jni\PhotosMetaData.h">
+      <Filter>Source files</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
