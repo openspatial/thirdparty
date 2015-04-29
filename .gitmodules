@@ -1,0 +1,9 @@
+[submodule "vrone-unity.git"]
+	path = vrone-unity.git
+	url = https://bitbucket.org/vrone/unity3d.git
+[submodule "cardboard-unity"]
+	path = cardboard-unity
+	url = https://github.com/googlesamples/cardboard-unity.git
+[submodule "OSVR-Unity"]
+	path = OSVR-Unity
+	url = https://github.com/OSVR/OSVR-Unity
