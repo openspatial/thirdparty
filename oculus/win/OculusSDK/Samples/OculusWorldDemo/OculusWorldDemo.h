@@ -4,7 +4,7 @@ Filename    :   OculusWorldDemo.h
 Content     :   First-person view test application for Oculus Rift - Header file
 Created     :   October 4, 2012
 Authors     :   Michael Antonov, Andrew Reisse, Steve LaValle, Dov Katz
-                Peter Hoff, Dan Goodman, Bryan Croteau                
+                Peter Hoff, Dan Goodman, Bryan Croteau
 
 Copyright   :   Copyright 2012 Oculus VR, LLC. All Rights reserved.
 
@@ -72,7 +72,7 @@ using namespace OVR::Render;
 //  'W', 'S', 'A', 'D' and Arrow Keys - Move forward, back; strafe left/right.
 //
 //  Space - Bring up status and help display.
-//  Tab   - Bring up/hide menu with editable options. 
+//  Tab   - Bring up/hide menu with editable options.
 //  F4    - Toggle MSAA.
 //  F9    - Cycle through fullscreen and windowed modes.
 //          Necessary for previewing content with Rift.
@@ -96,7 +96,7 @@ using namespace OVR::Render;
 //  - Graphics and HMD setup is done OculusWorldDemoApp::OnStartup(). Much of
 //    HMD configuration here is moved to CalculateHmdValues.
 //    OnStartup also creates the room model from Slab declarations.
-//    
+//
 //  - Per-frame processing is done in OnIdle(). This function processes
 //    sensor and movement input and then renders the frame.
 //
@@ -116,7 +116,7 @@ public:
     virtual void OnResize(int width, int height);
 
     bool         SetupWindowAndRendering(int argc, const char** argv);
-    
+
     // Adds room model to scene.
     void         InitMainFilePath();
     void         PopulateScene(const char* fileName);
@@ -131,13 +131,16 @@ public:
     Sizei        EnsureRendertargetAtLeastThisBig (int rtNum, Sizei size);
 
 
+    // Renders HUD/menu overlays; 2D viewport must be set before call.
+    Recti        RenderTextInfoHud(float textHeight);
+    Recti        RenderMenu(float textHeight);
+
     // Renders full stereo scene for one eye.
-    void         RenderEyeView(ovrEyeType eye);
-    // Renderes HUD overlay brough up by spacebar; 2D viewport must be set before call.
-    void         RenderTextInfoHud(float textHeight);
+    void         RenderEyeView(ovrEyeType eye, Posef playerTorso);
     void         RenderAnimatedBlocks(ovrEyeType eye, double appTime);
-    void         RenderGrid(ovrEyeType eye);
-    
+    void         RenderGrid(ovrEyeType eye, Recti viewport);
+    void         RenderCockpitPanels(ovrEyeType eye, Posef playerTorso);
+
     Matrix4f     CalculateViewFromPose(const Posef& pose);
 
     // Determine whether this frame needs rendering based on timewarp timing and flags.
@@ -148,8 +151,7 @@ public:
     // Model creation and misc functions.
     Model*      CreateModel(Vector3f pos, struct SlabModel* sm);
     Model*      CreateBoundingModel(CollisionModel &cm);
-    void        ChangeDisplay ( bool bBackToWindowed, bool bNextFullscreen, bool bFullWindowDebugging );
-    void        GamepadStateChanged(const GamepadState& pad);    
+    void        GamepadStateChanged(const GamepadState& pad);
 
     // Processes DeviceNotificationStatus queue to handles plug/unplug.
     void         ProcessDeviceNotificationQueue();
@@ -160,7 +162,7 @@ public:
     void HmdSettingChange(OptionVar* = 0)   { HmdSettingsChanged = true; }
     void MirrorSettingChange(OptionVar* = 0)
     { HmdSettingsChanged = true; NotificationTimeout = ovr_GetTimeInSeconds() + 10.0f;}
-    
+
     void BlockShowChange(OptionVar* = 0)    { BlocksCenter = ThePlayer.BodyPos; }
     void EyeHeightChange(OptionVar* = 0)
     {
@@ -187,24 +189,26 @@ protected:
     int                 FirstScreenInCycle;
     bool                SupportsSrgb;
     bool                SupportsMultisampling;
-    
+    bool                SupportsDepthMultisampling;
+
     struct RenderTarget
     {
-        Ptr<Texture>     pColorTex;
-        Ptr<Texture>     pDepthTex;
-        ovrTexture       OvrColorTex;
-        ovrTexture       OvrDepthTex;
+        Ptr<Texture>    pColorTex;
+        Ptr<Texture>    pDepthTex;
     };
     enum RendertargetsEnum
     {
         Rendertarget_Left,
         Rendertarget_Right,
         Rendertarget_BothEyes,    // Used when both eyes are rendered to the same target.
+        Rendertarget_Hud,
+        Rendertarget_Menu,
         Rendertarget_LAST
     };
     RenderTarget        RenderTargets[Rendertarget_LAST];
     RenderTarget        MsaaRenderTargets[Rendertarget_LAST];
-    RenderTarget*       DrawEyeTargets; // the buffers we'll actually render to (could be MSAA)
+    RenderTarget*       DrawEyeTargets[Rendertarget_LAST]; // the buffers we'll actually render to (could be MSAA)
+    static const bool   AllowMsaaTargets[Rendertarget_LAST]; // whether or not we allow the layer to use MSAA
 
     // ***** Oculus HMD Variables
 
@@ -213,11 +217,15 @@ protected:
     Matrix4f            Projection[2];          // Projection matrix for eye.
     Matrix4f            OrthoProjection[2];     // Projection for 2D.
     ovrPosef            EyeRenderPose[2];       // Poses we used for rendering.
-    ovrTexture          EyeTexture[2];
-    ovrTexture          EyeDepthTexture[2];
+    Ptr<Texture>        EyeTexture[2];
+    Ptr<Texture>        EyeDepthTexture[2];
+    Recti               EyeRenderViewports[2];
     Sizei               EyeRenderSize[2];       // Saved render eye sizes; base for dynamic sizing.
+    Ptr<Texture>        MirrorTexture;
+    ovrTimewarpProjectionDesc PosTimewarpProjectionDesc;
+
     // Sensor caps applied.
-    unsigned            StartTrackingCaps;    
+    unsigned            StartTrackingCaps;
     bool                UsingDebugHmd;
 
     // Frame timing logic.
@@ -229,8 +237,8 @@ protected:
     double              LastFpsUpdate;
 
     // Times a single frame.
-    double              LastUpdate;         
-  
+    double              LastUpdate;
+
     // Loaded data.
     String	                    MainFilePath;
     Array<Ptr<CollisionModel> > CollisionModels;
@@ -250,10 +258,10 @@ protected:
     bool                HavePositionTracker;
     bool                HaveHMDConnected;
     bool                HaveSync;
-    
+
     double              LastSyncTime;
     unsigned int        LastCameraFrame;
-    
+
     GamepadState        LastGamepadState;
 
     Player				ThePlayer;
@@ -265,6 +273,12 @@ protected:
     Scene				OculusCubesScene;
     Scene               RedCubesScene;
     Scene				BlueCubesScene;
+
+    Ptr<Texture>        TextureBlueCube;
+    Ptr<Texture>        TextureRedCube;
+    Ptr<Texture>        TextureOculusCube;
+
+    Ptr<Texture>        CockpitPanelTexture;
 
 #ifdef DISTORTION_TUNING
     Scene               DistortTuneScene;
@@ -279,10 +293,10 @@ protected:
     ovrFrameTiming      HmdFrameTiming;
     unsigned            HmdStatus;
 
-    // Overlay notifications time out in 
+    // Overlay notifications time out in
     double              NotificationTimeout;
 
-    // ***** Modifiable Menu Options 
+    // ***** Modifiable Menu Options
 
     // This flag is set when HMD settings change, causing HMD to be re-initialized.
     bool                HmdSettingsChanged;
@@ -291,6 +305,11 @@ protected:
     bool                RendertargetIsSharedByBothEyes;
     bool                DynamicRezScalingEnabled;
     bool                EnableSensor;
+
+    // The size of the rendered HUD in pixels. If size==0, there's no HUD at the moment.
+    Recti               HudRenderedSize;
+    Recti               MenuRenderedSize;
+    float               MenuHudTextPixelHeight;
 
     enum MonoscopicMode
     {
@@ -303,10 +322,8 @@ protected:
     MonoscopicMode      MonoscopicRenderMode;
     float               PositionTrackingScale;
     bool                ScaleAffectsEyeHeight;
-    float               DesiredPixelDensity;    
-    float               FovSideTanMax;
-    float               FovSideTanLimit; // Limit value for Fov.
-    bool                FadedBorder;
+    float               DesiredPixelDensity;
+    float               FovScaling;
 
     float               NearClip;
     float               FarClip;
@@ -329,35 +346,43 @@ protected:
     } SceneRenderCountType;
     int32_t             SceneRenderCountLow;
     int32_t             SceneRenderCountHigh;
-
-    // Time-warp.
-    enum TimewarpMode
-    {
-        Timewarp_Off,
-        Timewarp_Orientation,
-    };
-    TimewarpMode        TimewarpOption;
-    bool                TimewarpJitDelayEnabled;
-    float               TimewarpRenderIntervalInSeconds;    
+    
+    float               TimewarpRenderIntervalInSeconds;
     bool                FreezeEyeUpdate;
     bool                FreezeEyeOneFrameRendered;
     bool                ComputeShaderEnabled;
+    bool                PentileEnabled;
+    bool                LayersEnabled;              // Using layers, or just rendering quads into the eye buffers?
+    bool                Layer0HighQuality;
+    bool                Layer0Depth;
+    bool                Layer1Enabled;
+    bool                Layer1HighQuality;
+    bool                Layer2Enabled;
+    bool                Layer2HighQuality;
+    bool                Layer3Enabled;
+    bool                Layer3HighQuality;
+    float               Layer23Size;
+    bool                LayerDebugEnabled;
+    int                 LayerCockpitEnabled;        // A bitfield - one enable bit per layer.
+    bool                LayerCockpitHighQuality;
+    bool                LayerHudMenuEnabled;        // So you can hide the menu with Shift+Tab while toggling visual things.
+    bool                LayerHudMenuHighQuality;
 
     // Other global settings.
     float               CenterPupilDepthMeters;
     bool                ForceZeroHeadMovement;
     bool                VsyncEnabled;
-    bool                MultisampleEnabled;
+    bool                MultisampleRequested;       // What the menu option is set to.
+    bool                MultisampleEnabled;         // Did we actually get it?
+    bool                TextureOriginAtBottomLeft;
 #if defined(OVR_OS_LINUX)
     bool                LinuxFullscreenOnDevice;
 #endif
     // DK2 only:
     bool                IsLowPersistence;
-    bool                DynamicPrediction;
-    bool                DisplaySleep;
+    bool                DynamicPrediction;    
     bool                PositionTrackingEnabled;
     bool				PixelLuminanceOverdrive;
-    bool                HqAaDistortion;
     bool                MirrorToWindow;
 
     // Support toggling background color for distortion so that we can see
@@ -386,6 +411,7 @@ protected:
     {
         GridDisplay_None,
         GridDisplay_GridOnly,
+        GridDisplay_GridDirect,
         GridDisplay_GridAndScene
     };
     GridDispayModeType  GridDisplayMode;
@@ -405,7 +431,7 @@ protected:
     {
         Text_None,
         Text_Info,
-        Text_Timing,        
+        Text_Timing,
         Text_Help1,
         Text_Help2,
         Text_Count
@@ -427,7 +453,38 @@ protected:
     RenderProfiler      Profiler;
 
     // true if logging tracking data to file
-    bool IsVisionLogging;
+    bool                IsVisionLogging;
+
+    
+    // **** Rendering Layer Setup
+
+    enum LayerNumbers
+    {
+        LayerNum_MainEye = 0,
+        LayerNum_Layer1 = 1,
+        LayerNum_Layer2 = 2,
+        LayerNum_Layer3 = 3,
+        LayerNum_CockpitFirst = 4,
+        LayerNum_CockpitLast = 4 + 4,
+        LayerNum_Hud = 20,
+        LayerNum_Menu = 21,
+        LayerNum_Debug = 25,
+        // Total # of layers.
+        LayerNum_TotalLayers = 26
+    };
+
+    // Complete layer list. Some entries may be null.
+    ovrLayerHeader*     LayerList[LayerNum_TotalLayers];
+
+    // Individual layer objects.
+    // EyeLayer can be either regular or with depth, so use a union type.
+    ovrLayer_Union      EyeLayer;
+
+    ovrLayerQuad        Layer1, Layer2, Layer3;
+    ovrLayerQuad        CockpitLayer[LayerNum_CockpitLast - LayerNum_CockpitFirst + 1];
+    ovrLayerQuad        HudLayer;
+    ovrLayerQuad        MenuLayer;
+    ovrLayerDirect      DebugLayer;
 };
 
 

@@ -26,9 +26,15 @@ limitations under the License.
 
 namespace OVR { namespace Render {
 
-Texture* LoadTextureTga(RenderDevice* ren, File* f, unsigned char alpha, bool generatePremultAlpha)
+Texture* LoadTextureTgaEitherWay(RenderDevice* ren, File* f, unsigned char alpha, bool generatePremultAlpha, bool bottomUp, bool createSwapTextureSet)
 {
     f->SeekToBegin();
+
+    if ( f->GetLength() == 0 )
+    {
+        // File doesn't exist!
+        return NULL;
+    }
     
     int desclen = f->ReadUByte();
     int palette = f->ReadUByte();
@@ -42,8 +48,7 @@ Texture* LoadTextureTga(RenderDevice* ren, File* f, unsigned char alpha, bool ge
     int width = f->ReadUInt16();
     int height = f->ReadUInt16();
     int bpp = f->ReadUByte();
-    int descbyte = f->ReadUByte();         // <--- image descriptor byte
-    OVR_ASSERT_AND_UNUSED(descbyte == 0, descbyte); //image is flipped
+    int descbyte = f->ReadUByte();
     int imgsize = width * height * 4;
     unsigned char* imgdata = (unsigned char*) OVR_ALLOC(imgsize);
     unsigned char buf[16];
@@ -51,8 +56,29 @@ Texture* LoadTextureTga(RenderDevice* ren, File* f, unsigned char alpha, bool ge
     f->Read(imgdata, palCount * (palSize + 7) >> 3);
     int bpl = width * 4;
 
-    // Note that TGAs are stored bottom-up.
-    // (in theory you can store them top-down and flip a bit inside the "image descriptor" byte, but that breaks a lot of things)
+    // From the interwebs (very reliable I'm sure):
+    //
+    // Image Descriptor Byte.                                   
+    // Bits 3-0 - number of attribute bits associated with each 
+    //            pixel.                                        
+    // Bit 4    - reserved.  Must be set to 0.                  
+    // Bit 5    - screen origin bit.                            
+    //            0 = Origin in lower left-hand corner.         
+    //            1 = Origin in upper left-hand corner.         
+    //            Must be 0 for Truevision images.              
+    // Bits 7-6 - Data storage interleaving flag.               
+    //            00 = non-interleaved.                         
+    //            01 = two-way (even/odd) interleaving.         
+    //            10 = four way interleaving.                   
+    //            11 = reserved.                                
+    // This entire byte should be set to 0
+    OVR_ASSERT ( ( ( bpp == 24 ) && ( descbyte == 0 ) ) || ( ( bpp == 32 ) && ( descbyte == 8 ) ) );
+    if ( ( descbyte & 0x10 ) != 0 )
+    {
+        // TGA is stored top-down rather than bottom-up, so flip the way we read the data to cope.
+        OVR_ASSERT ( !"test me" );
+        bottomUp = !bottomUp;
+    }
 
     switch (imgtype)
     {
@@ -60,7 +86,13 @@ Texture* LoadTextureTga(RenderDevice* ren, File* f, unsigned char alpha, bool ge
         switch (bpp)
         {
         case 24:
-            for (int y = height-1; y >= 0; y--)
+            for (int yc = height-1; yc >= 0; yc--)
+            {
+                int y = yc;
+                if ( bottomUp )
+                {
+                    y = (height-1) - y;
+                }
                 for (int x = 0; x < width; x++)
                 {
                     f->Read(buf, 3);
@@ -69,9 +101,16 @@ Texture* LoadTextureTga(RenderDevice* ren, File* f, unsigned char alpha, bool ge
                     imgdata[y*bpl+x*4+2] = buf[0];
                     imgdata[y*bpl+x*4+3] = alpha;
                 }
+            }
             break;
         case 32:
-            for (int y = height-1; y >= 0; y--)
+            for (int yc = height-1; yc >= 0; yc--)
+            {
+                int y = yc;
+                if ( bottomUp )
+                {
+                    y = (height-1) - y;
+                }
                 for (int x = 0; x < width; x++)
                 {
                     f->Read(buf, 4);
@@ -94,20 +133,29 @@ Texture* LoadTextureTga(RenderDevice* ren, File* f, unsigned char alpha, bool ge
                         imgdata[y*bpl+x*4+2] = (unsigned char)((float)buf[0] * (float)buf[3] / 255.0f);
                     }
                 }
+            }
             break;
 
         default:
+            OVR_ASSERT ( !"Unknown bits per pixel" );
             OVR_FREE(imgdata);
             return NULL;
         }
         break;
 
     default:
+        OVR_ASSERT ( !"unknown file format" );
         OVR_FREE(imgdata);
         return NULL;
     }
 
-    Texture* out = ren->CreateTexture(Texture_RGBA|Texture_GenMipmaps, width, height, imgdata);
+    int format = Texture_RGBA|Texture_GenMipmaps;
+    if ( createSwapTextureSet )
+    {
+        format |= Texture_SwapTextureSet;
+    }
+
+    Texture* out = ren->CreateTexture(format, width, height, imgdata);
 
     // check for clamp based on texture name
     if(strstr(f->GetFilePath(), "_c."))
@@ -118,5 +166,16 @@ Texture* LoadTextureTga(RenderDevice* ren, File* f, unsigned char alpha, bool ge
     OVR_FREE(imgdata);
     return out;
 }
+
+Texture* LoadTextureTgaTopDown(RenderDevice* ren, File* f, unsigned char alpha, bool generatePremultAlpha, bool createSwapTextureSet)
+{
+    return LoadTextureTgaEitherWay ( ren, f, alpha, generatePremultAlpha, false, createSwapTextureSet );
+}
+
+Texture* LoadTextureTgaBottomUp(RenderDevice* ren, File* f, unsigned char alpha, bool generatePremultAlpha, bool createSwapTextureSet)
+{
+    return LoadTextureTgaEitherWay ( ren, f, alpha, generatePremultAlpha, true, createSwapTextureSet );
+}
+
 
 }}

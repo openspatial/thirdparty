@@ -75,7 +75,7 @@ static inline int InterpretPixelFormatFourCC(uint32_t fourCC) {
 	return -1;
 }
 
-Texture* LoadTextureDDS(RenderDevice* ren, File* f)
+Texture* LoadTextureDDSTopDown(RenderDevice* ren, File* f)
 {
     OVR_DDS_HEADER header;
     unsigned char filecode[4];

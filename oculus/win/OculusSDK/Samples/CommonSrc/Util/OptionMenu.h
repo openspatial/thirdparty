@@ -316,7 +316,8 @@ public:
     bool OnKey(OVR::KeyCode key, int chr, bool down, int modifiers);
     bool OnGamepad(uint32_t buttonMask);
 
-    void Render(RenderDevice* prender, String title = "");
+    // Returns rendered bounds.
+    Recti Render(RenderDevice* prender, String title, float textHeight, float centerX, float centerY);
     
     void AddItem(OptionMenuItem* menuItem);
 
@@ -399,7 +400,7 @@ public:
 
 protected:
 
-    void renderShortcutChangeMessage(RenderDevice* prender);
+    Recti renderShortcutChangeMessage(RenderDevice* prender, float textSize, float centerX, float centerY);
 
 public:
     OptionSelectionMenu* GetSubmenu();
@@ -465,7 +466,8 @@ enum DrawTextCenterType
     DrawText_Border  = 0x10,
 };
 
-void    DrawTextBox(RenderDevice* prender, float x, float y,
+// Returns rendered bounds.
+Recti    DrawTextBox(RenderDevice* prender, float x, float y,
                     float textSize, const char* text,
                     unsigned centerType = DrawText_NoCenter);
 

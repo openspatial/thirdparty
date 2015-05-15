@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "../Render/Render_GL_Device.h"
 #include "Kernel/OVR_Log.h"
-#include "OVR_CAPI_GL.h"
 #include <assert.h>
 
 namespace OVR { namespace Render { namespace GL {
@@ -200,7 +199,11 @@ static const char* AlphaTextureFragShaderSrc =
     
     "void main()\n"
     "{\n"
-    "   _FRAGCOLOR = oColor * vec4(1,1,1,_TEXTURE(Texture0, oTexCoord).r);\n"
+    "   vec4 finalColor = oColor;\n"
+    "   finalColor.a *= _TEXTURE(Texture0, oTexCoord).r;\n"
+    // Blend state expects premultiplied alpha
+    "   finalColor.rgb *= finalColor.a;\n"
+    "   _FRAGCOLOR = finalColor;\n"
     "}\n";
 
 static const char* AlphaBlendedTextureFragShaderSrc =
@@ -217,6 +220,22 @@ static const char* AlphaBlendedTextureFragShaderSrc =
     "   finalColor *= _TEXTURE(Texture0, oTexCoord);\n"
     // Blend state expects premultiplied alpha
     "   finalColor.rgb *= finalColor.a;\n"
+    "   _FRAGCOLOR = finalColor;\n"
+    "}\n";
+
+static const char* AlphaPremultTexturePixelShaderSrc =
+    "uniform sampler2D Texture0;\n"
+
+    "_FS_IN vec4 oColor;\n"
+    "_FS_IN vec2 oTexCoord;\n"
+
+    "_FRAGCOLOR_DECLARATION\n"
+    
+    "void main()\n"
+    "{\n"
+    "   vec4 finalColor = oColor;\n"
+    "   finalColor *= _TEXTURE(Texture0, oTexCoord);\n"
+    // texture should already be in premultiplied alpha
     "   _FRAGCOLOR = finalColor;\n"
     "}\n";
 
@@ -594,6 +613,7 @@ static const char* FShaderSrcs[FShader_Count] =
     TextureFragShaderSrc,
     AlphaTextureFragShaderSrc,
     AlphaBlendedTextureFragShaderSrc,
+    AlphaPremultTexturePixelShaderSrc,
     PostProcessFragShaderWithChromAbSrc,
     LitSolidFragShaderSrc,
     LitTextureFragShaderSrc,
@@ -605,10 +625,14 @@ static const char* FShaderSrcs[FShader_Count] =
 };
 
 
-RenderDevice::RenderDevice(const RendererParams&)
-  : VertexShaders(),
+RenderDevice::RenderDevice(ovrHmd hmd, const RendererParams&)
+  : Render::RenderDevice(hmd),
+    VertexShaders(),
     FragShaders(),
     DefaultFill(),
+    DefaultTextureFill(),
+    DefaultTextureFillAlpha(),
+    DefaultTextureFillPremult(),
     Proj(),
     Vao(0),
     CurRenderTarget(),
@@ -662,6 +686,14 @@ RenderDevice::RenderDevice(const RendererParams&)
     gouraudShaders->SetShader(FragShaders[FShader_Gouraud]);
     DefaultFill = *new ShaderFill(gouraudShaders);
 
+    DefaultTextureFill        = CreateTextureFill ( NULL, false, false );
+    DefaultTextureFillAlpha   = CreateTextureFill ( NULL, true, false );
+    DefaultTextureFillPremult = CreateTextureFill ( NULL, false, true );
+    // One day, I will understand smart pointers. Today is not that day...
+    DefaultTextureFill->Release();
+    DefaultTextureFillAlpha->Release();
+    DefaultTextureFillPremult->Release();
+
     glGenFramebuffers(1, &CurrentFbo);
     glGenFramebuffers(1, &MsaaFbo);
     
@@ -669,6 +701,9 @@ RenderDevice::RenderDevice(const RendererParams&)
     {
         glGenVertexArrays(1, &Vao);
     }
+
+    Blitter = *new GLUtil::Blitter();
+    Blitter->Initialize();
 }
 
 RenderDevice::~RenderDevice()
@@ -708,9 +743,9 @@ void RenderDevice::Shutdown()
 }
 
 
-void RenderDevice::FillTexturedRect(float left, float top, float right, float bottom, float ul, float vt, float ur, float vb, Color c, Ptr<OVR::Render::Texture> tex)
+void RenderDevice::FillTexturedRect(float left, float top, float right, float bottom, float ul, float vt, float ur, float vb, Color c, Ptr<OVR::Render::Texture> tex, const Matrix4f* view, bool premultAlpha /*= false*/)
 {
-	Render::RenderDevice::FillTexturedRect(left, top, right, bottom, ul, vt, ur, vb, c, tex);
+	Render::RenderDevice::FillTexturedRect(left, top, right, bottom, ul, vt, ur, vb, c, tex, view, premultAlpha);
 }
 
 
@@ -732,9 +767,10 @@ void RenderDevice::BeginRendering()
     glEnable(GL_CULL_FACE);
     glFrontFace(GL_CW);
 
+    // All blending is premultiplied alpha. If the source actually needs lerp, the shader will convert it.
     glEnable(GL_LINE_SMOOTH);
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void RenderDevice::SetDepthMode(bool enable, bool write, CompareFunc func)
@@ -781,6 +817,14 @@ void RenderDevice::Clear(float r, float g, float b, float a, float depth, bool c
         );
 }
 
+void RenderDevice::DeleteFills()
+{
+    DefaultTextureFill.Clear();
+    DefaultTextureFillAlpha.Clear();
+    DefaultTextureFillPremult.Clear();
+}
+
+
 Texture* RenderDevice::GetDepthBuffer(int w, int h, int ms)
 {
     for (unsigned i = 0; i < DepthBuffers.GetSize(); i++)
@@ -798,12 +842,12 @@ void RenderDevice::ResolveMsaa(OVR::Render::Texture* msaaTex, OVR::Render::Textu
     glBindFramebuffer( GL_READ_FRAMEBUFFER, MsaaFbo );
     glFramebufferTexture2D( GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                             isMsaaTarget ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D,
-                            ((Texture*)msaaTex)->TexId, 0);
+                            ((Texture*)msaaTex)->GetTexId(), 0);
     glFramebufferRenderbuffer(GL_READ_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
     OVR_ASSERT(glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 
     glBindFramebuffer( GL_DRAW_FRAMEBUFFER, CurrentFbo );
-    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ((Texture*)outputTex)->TexId, 0);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ((Texture*)outputTex)->GetTexId(), 0);
     glFramebufferRenderbuffer(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
 
     OVR_ASSERT(glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
@@ -837,9 +881,9 @@ void RenderDevice::SetRenderTarget(Render::Texture* color, Render::Texture* dept
 
     GLenum texTarget = (sampleCount > 1) ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
 
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texTarget, ((Texture*)color)->TexId, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, texTarget, ((Texture*)color)->GetTexId(), 0);
     if (depth)
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, texTarget, ((Texture*)depth)->TexId, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, texTarget, ((Texture*)depth)->GetTexId(), 0);
     else
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
 
@@ -857,7 +901,7 @@ void RenderDevice::SetWorldUniforms(const Matrix4f& proj)
 void RenderDevice::SetTexture(Render::ShaderStage, int slot, const Texture* t)
 {
     glActiveTexture(GL_TEXTURE0 + slot);
-    glBindTexture((t->GetSamples() > 1) ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, ((Texture*)t)->TexId);
+    glBindTexture((t->GetSamples() > 1) ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, ((Texture*)t)->GetTexId());
 }
 
 Buffer* RenderDevice::CreateBuffer()
@@ -865,12 +909,33 @@ Buffer* RenderDevice::CreateBuffer()
     return new Buffer(this);
 }
 
-Fill* RenderDevice::CreateSimpleFill(int flags)
+Fill* RenderDevice::GetSimpleFill(int flags)
 {
     OVR_UNUSED(flags);
     return DefaultFill;
 }
     
+Fill* RenderDevice::GetTextureFill(Render::Texture* t, bool useAlpha, bool usePremult)
+{
+    Fill *f = DefaultTextureFill;
+    if ( usePremult )
+    {
+        f = DefaultTextureFillPremult;
+    }
+    else if ( useAlpha )
+    {
+        f = DefaultTextureFillAlpha;
+    }
+	f->SetTexture(0, t);
+	return f;
+}
+
+void RenderDevice::Blt(Render::Texture* texture)
+{
+    Texture* tex = (Texture*)texture;
+    Blitter->Blt(tex->GetTexId());
+}
+
 void RenderDevice::Render(const Matrix4f& matrix, Model* model)
 {
     if (GLVersionInfo.SupportsVAO)
@@ -1229,15 +1294,23 @@ bool ShaderSet::SetUniform4x4f(const char* name, const Matrix4f& m)
     return 0;
 }
 
-Texture::Texture(RenderDevice* r, int w, int h, int samples) : Ren(r), Width(w), Height(h), Samples(samples)
+Texture::Texture(ovrHmd hmd, RenderDevice* r, int w, int h, int samples) : Hmd(hmd), Ren(r), Width(w), Height(h), Samples(samples), TextureSet(nullptr), MirrorTexture(nullptr), TexId(0)
 {
-    glGenTextures(1, &TexId);
 }
 
 Texture::~Texture()
 {
-    if (TexId)
-        glDeleteTextures(1, &TexId);
+    if (TextureSet)
+    {
+        ovrHmd_DestroySwapTextureSet(Hmd, TextureSet);
+        TextureSet = nullptr;
+    }
+
+    if (MirrorTexture)
+    {
+        ovrHmd_DestroyMirrorTexture(Hmd, MirrorTexture);
+        MirrorTexture = nullptr;
+    }
 }
 
 void Texture::Set(int slot, Render::ShaderStage stage) const
@@ -1247,7 +1320,7 @@ void Texture::Set(int slot, Render::ShaderStage stage) const
 
 void Texture::SetSampleMode(int sm)
 {
-    glBindTexture((GetSamples() > 1) ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, TexId);
+    glBindTexture((GetSamples() > 1) ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, GetTexId());
     switch (sm & Sample_FilterMask)
     {
     case Sample_Linear:
@@ -1299,17 +1372,36 @@ ovrTexture Texture::Get_ovrTexture()
     ovrGLTextureData* texData = (ovrGLTextureData*)&tex;
     texData->Header.API            = ovrRenderAPI_OpenGL;
     texData->Header.TextureSize    = newRTSize;
-    texData->Header.RenderViewport = Recti(newRTSize);
-    texData->TexId                 = TexId;
+    texData->TexId                 = GetTexId();
 
     return tex;
 }
 
+
 Texture* RenderDevice::CreateTexture(int format, int width, int height, const void* data, int mipcount)
 {
+    static bool knownVendor = false;
+    static const char* atiVendor = nullptr;
+
+    // If this is a simple texture, complete our initialization.
+    // AMD cards require this initialization as well since they
+    // do not properly implement the DX/GL interop
+    if (!knownVendor)
+    {
+        const GLubyte* vendor = glGetString(GL_VENDOR);
+
+        if (vendor)
+        {
+            atiVendor = strstr((const char*)vendor, "ATI");
+            knownVendor = true;
+        }
+    }
+    bool furtherInitialization = true;
+
     GLenum   glformat, gltype = GL_UNSIGNED_BYTE;
     switch(format & Texture_TypeMask)
     {
+    case Texture_BGRA:  glformat = GL_BGRA; break;
     case Texture_RGBA:  glformat = GL_RGBA; break;
     case Texture_R:     glformat = GL_RED; break;
     case Texture_Depth: glformat = GL_DEPTH_COMPONENT; gltype = GL_FLOAT; break;
@@ -1327,22 +1419,24 @@ Texture* RenderDevice::CreateTexture(int format, int width, int height, const vo
 
     GLenum textureTarget = (samples > 1) ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
 
-    Texture* NewTex = new Texture(this, width, height, samples);
-    glBindTexture(textureTarget, NewTex->TexId);
-    GLint err = glGetError();
+    Texture* NewTex = new Texture(Hmd, this, width, height, samples);
 
-    #if ! defined(OVR_OS_MAC)
-    OVR_ASSERT(!err);
-    #endif
-
-    if( err )
-    {
-        printf("RenderDevice::CreateTexture glGetError result: %d\n", err);
-    }
-    
     if (format & Texture_Compressed)
     {
-    	if(GLE_EXT_texture_compression_s3tc) // If compressed textures are supported (they typically are)...
+        glGenTextures(1, &NewTex->TexId);
+        glBindTexture(textureTarget, NewTex->GetTexId());
+        GLint err = glGetError();
+
+#if ! defined(OVR_OS_MAC)
+        OVR_ASSERT(!err);
+#endif
+
+        if (err)
+        {
+            printf("RenderDevice::CreateTexture glGetError result: %d\n", err);
+        }
+
+        if (GLE_EXT_texture_compression_s3tc) // If compressed textures are supported (they typically are)...
     	{
 			const unsigned char* level = (const unsigned char*)data;
 			int w = width, h = height;
@@ -1383,10 +1477,85 @@ Texture* RenderDevice::CreateTexture(int format, int width, int height, const vo
         bool isDepth = ((format & Texture_Depth) != 0);
         GLenum internalFormat = (isSRGB) ? GL_SRGB8_ALPHA8 : (isDepth) ? (GLE_ARB_depth_buffer_float ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT) : glformat;
 
+        if (format & Texture_Mirror)
+        {
+            ovrHmd_CreateMirrorTextureGL(Hmd, internalFormat, width, height, &NewTex->MirrorTexture);
+            NewTex->TexId = ((ovrGLTexture*)NewTex->MirrorTexture)->OGL.TexId;
+            furtherInitialization = false;
+        }
+        else if (format & Texture_SwapTextureSet)
+        {
+            // Can do this with rendertargets, depth buffers, or normal textures, but *not* MSAA.
+            OVR_ASSERT ( samples == 1);
+            ovrHmd_CreateSwapTextureSetGL(Hmd, internalFormat, width, height, &NewTex->TextureSet);
+            if (!NewTex->TextureSet)
+            {
+                OVR_ASSERT(false);
+                return nullptr;
+            }
+
+            furtherInitialization = false;
+        }
+        else
+        {
+            glGenTextures(1, &NewTex->TexId);
+        }
+
+        OVR_ASSERT(NewTex->GetTexId());
+        
+        glBindTexture(textureTarget, NewTex->GetTexId());
+        GLint err = glGetError();
+
+#if ! defined(OVR_OS_MAC)
+        OVR_ASSERT(!err);
+#endif
+
+        if (err)
+        {
+            printf("RenderDevice::CreateTexture glGetError result: %d\n", err);
+        }
+
         if (samples > 1)
             glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, samples, internalFormat, width, height, false);
-        else
-            glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, glformat, gltype, data);
+        else if ((format & Texture_Mirror) == 0)
+        {
+            int textureCount = 1;
+            if (format & Texture_SwapTextureSet)
+            {
+                textureCount = NewTex->TextureSet->TextureCount;
+            }
+
+            GLuint* textureId = new GLuint[textureCount];
+
+            if (textureCount == 1)
+            {
+                textureId[0] = NewTex->GetTexId();
+            }
+            else
+            {
+                for (int i = 0; i < textureCount; ++i)
+                {
+                    textureId[i] = ((ovrGLTexture*)&NewTex->TextureSet->Textures[i])->OGL.TexId;
+                }
+            }
+
+            for (int i = 0; i < textureCount; ++i)
+            {
+                glBindTexture(textureTarget, textureId[i]);
+
+                if (furtherInitialization || atiVendor)
+                {
+                    glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, glformat, gltype, data);
+                }
+                else if (data)
+                {
+                    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, glformat, gltype, data);
+                }
+            }
+
+            delete textureId;
+        }
+            
     }
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -1415,7 +1584,7 @@ Texture* RenderDevice::CreateTexture(int format, int width, int height, const vo
             OVR_FREE(mipmaps);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, level);
     }
-    else
+    else if (furtherInitialization || atiVendor)
     {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, mipcount-1);
     }
@@ -1486,7 +1655,7 @@ bool DebugCallback::GetGLDebugCallback(PFNGLDEBUGMESSAGECALLBACKPROC* debugCallb
 }
 
 
-void DebugCallback::DebugCallbackInternal(Severity s, const char* pSource, const char* pType, GLuint id, const char* pSeverity, const char* message)
+void DebugCallback::DebugCallbackInternal(Severity s, const char* pSource, const char* pType, GLuint id, const char* pSeverity, const char* message) const
 {
     if(s >= MinLogSeverity)
     {
@@ -1495,7 +1664,7 @@ void DebugCallback::DebugCallbackInternal(Severity s, const char* pSource, const
 
     if(s >= MinAssertSeverity)
     {
-        OVR_ASSERT(s < MinAssertSeverity); // Unilateral fail.
+        OVR_FAIL_M("s < MinAssertSeverity");
     }
 }
 
@@ -1520,7 +1689,7 @@ void DebugCallback::Initialize()
             // Try getting the KHR interface.
             if(GLE_KHR_debug) 
             {
-                glDebugMessageCallback(GLDEBUGPROC(DebugMessageCallback), this);
+                glDebugMessageCallback(DebugMessageCallback, this);
                 err = glGetError();
                 if(err)
                 {
@@ -1543,7 +1712,7 @@ void DebugCallback::Initialize()
             {
                 GetGLDebugCallback(&debugCallbackPrev, &userParamPrev);
 
-                glDebugMessageCallbackARB(GLDEBUGPROCARB(DebugMessageCallback), this);
+                glDebugMessageCallbackARB(DebugMessageCallback, this);
                 err = glGetError();
                 if(err)
                 {
@@ -1564,7 +1733,7 @@ void DebugCallback::Initialize()
             }
             else if(GLE_AMD_debug_output) // If ARB_debug_output also wasn't found, try AMD_debug_output.
 		    {
-				glDebugMessageCallbackAMD(GLDEBUGPROCAMD(DebugMessageCallbackAMD), this);
+				glDebugMessageCallbackAMD(DebugMessageCallbackAMD, this);
                 err = glGetError();
                 if(err)
                 {
@@ -1609,7 +1778,7 @@ DebugCallback::Implementation DebugCallback::GetImplementation() const
 }
 
 
-void DebugCallback::DebugMessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei /*length*/, const GLchar* message, GLvoid* userParam)
+void GLAPIENTRY DebugCallback::DebugMessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei /*length*/, const GLchar* message, const void* userParam)
 {
     const char* pSource   = GetSource(source);
     const char* pType     = GetType(type);
@@ -1633,7 +1802,7 @@ void DebugCallback::DebugMessageCallback(GLenum source, GLenum type, GLuint id, 
             break;
     }
 
-    DebugCallback* pThis = reinterpret_cast<DebugCallback*>(userParam);
+    const DebugCallback* pThis = reinterpret_cast<const DebugCallback*>(userParam);
     pThis->DebugCallbackInternal(s, pSource, pType, id, pSeverity, message);
 }
 
@@ -1716,7 +1885,7 @@ const char* DebugCallback::GetSeverity(GLenum Severity)
 }
 
 
-void DebugCallback::DebugMessageCallbackAMD(GLuint id, GLenum category, GLenum severity, GLsizei /*length*/, const GLchar *message, GLvoid *userParam)
+void DebugCallback::DebugMessageCallbackAMD(GLuint id, GLenum category, GLenum severity, GLsizei /*length*/, const GLchar* message, GLvoid* userParam)
 {
     static_assert(GL_DEBUG_SEVERITY_LOW_AMD == GL_DEBUG_SEVERITY_LOW, "Severity mismatch"); // Verify that AMD_debug_output severity constants are identical to KHR_debug severity contstants.
 

@@ -59,7 +59,8 @@ public:
     const double* GetAverages() const { return SampleAverage; } 
     const double* GetLastSampleSet() const;
 
-    void          DrawOverlay(RenderDevice* prender);
+    // Returns rendered bounds.
+    Recti          DrawOverlay(RenderDevice* prender, float centerX, float centerY, float textHeight);
 
 private:
 

@@ -95,7 +95,7 @@ bool XmlHandler::ReadFile(const char* fileName, OVR::Render::RenderDevice* pRend
 		if (textureName[dotpos + 1] == 'd' || textureName[dotpos + 1] == 'D')
 		{
 			// DDS file
-			Texture* tmp_ptr = LoadTextureDDS(pRender, pFile);
+			Texture* tmp_ptr = LoadTextureDDSTopDown(pRender, pFile);
 			if(tmp_ptr)
 			{
 				texture.SetPtr(*tmp_ptr);
@@ -103,7 +103,7 @@ bool XmlHandler::ReadFile(const char* fileName, OVR::Render::RenderDevice* pRend
 		}
 		else
 		{
-			Texture* tmp_ptr = LoadTextureTga(pRender, pFile);
+			Texture* tmp_ptr = LoadTextureTgaTopDown(pRender, pFile);
 			if(tmp_ptr)
 			{
 				texture.SetPtr(*tmp_ptr);

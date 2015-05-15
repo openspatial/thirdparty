@@ -75,7 +75,7 @@ enum Modifiers
 //-------------------------------------------------------------------------------------
 // ***** SetupGraphicsDeviceSet
 
-typedef RenderDevice* (*RenderDeviceCreateFunc)(const Render::RendererParams&, void*);
+typedef RenderDevice* (*RenderDeviceCreateFunc)(ovrHmd hmd, const Render::RendererParams&, void*);
 
 // SetupGraphicsDeviceSet is a PlatformCore::SetupGraphics initialization helper class,
 // used to build up a list of RenderDevices that can be used for rendering.
@@ -129,10 +129,8 @@ public:
 
     virtual void		ShowWindow(bool visible) = 0;
     
-    virtual bool		SetFullscreen(const Render::RendererParams& rp, int fullscreen);
-   
     // Search for a matching graphics renderer based on type argument and initializes it.    
-    virtual RenderDevice* SetupGraphics(const SetupGraphicsDeviceSet& setupGraphicsDesc,
+    virtual RenderDevice* SetupGraphics(ovrHmd hmd, const SetupGraphicsDeviceSet& setupGraphicsDesc,
                                         const char* gtype,
                                         const Render::RendererParams& rp) = 0;
 
@@ -142,8 +140,6 @@ public:
 
     virtual void		SetWindowTitle(const char*title) = 0;
 	virtual void		PlayMusicFile(const char *fileName) { OVR_UNUSED(fileName); }
-    virtual int			GetDisplayCount() { return 0; }
-    virtual Render::DisplayId GetDisplay(int screen);
     
     // Get time since start of application in seconds.
     double				GetAppTime() const; 

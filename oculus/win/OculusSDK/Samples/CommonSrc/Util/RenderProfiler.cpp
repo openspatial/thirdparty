@@ -61,7 +61,8 @@ const double* RenderProfiler::GetLastSampleSet() const
     return SampleHistory[(SampleCurrentFrame - 1 + NumFramesOfTimerHistory) % NumFramesOfTimerHistory];
 }
 
-void RenderProfiler::DrawOverlay(RenderDevice* prender)
+// Returns rendered bounds
+Recti RenderProfiler::DrawOverlay(RenderDevice* prender, float centerX, float centerY, float textHeight)
 {
     char buf[256 * Sample_LAST];
     OVR_strcpy ( buf, sizeof(buf), "Timing stats" );     // No trailing \n is deliberate.
@@ -96,5 +97,5 @@ void RenderProfiler::DrawOverlay(RenderDevice* prender)
         OVR_strcat ( buf, sizeof(buf), bufTemp );
     }
 
-    DrawTextBox(prender, 0.0f, 0.0f, 22.0f, buf, DrawText_Center);
+    return DrawTextBox(prender, centerX, centerY, textHeight, buf, DrawText_Center);
 }

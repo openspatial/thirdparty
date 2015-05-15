@@ -149,9 +149,6 @@
     <ClCompile Include="..\..\..\Src\Kernel\OVR_JSON.cpp">
       <Filter>Kernel</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\Src\Kernel\OVR_Lockless.cpp">
-      <Filter>Kernel</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\Src\Kernel\OVR_Log.cpp">
       <Filter>Kernel</Filter>
     </ClCompile>

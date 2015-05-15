@@ -393,7 +393,7 @@ OptionSelectionMenu::OptionSelectionMenu(OptionSelectionMenu* parentMenu)
     NavShortcuts[Nav_Back].AddShortcut(ShortcutKey(Key_Escape));
     NavShortcuts[Nav_Back].AddShortcut(Gamepad_B);
 
-    ToggleShortcut.AddShortcut(ShortcutKey(Key_Tab, ShortcutKey::Shift_Ignore));
+    ToggleShortcut.AddShortcut(ShortcutKey(Key_Tab, ShortcutKey::Shift_RequireOff));
     ToggleShortcut.AddShortcut(Gamepad_Start);
 
     ToggleSingleItemShortcut.AddShortcut(ShortcutKey(Key_Backspace, ShortcutKey::Shift_Ignore));
@@ -538,7 +538,7 @@ bool FindLineCharRange(const char* text, int searchLine, size_t charRange[2])
 }
 
 
-void OptionSelectionMenu::Render(RenderDevice* prender, String title)
+Recti OptionSelectionMenu::Render(RenderDevice* prender, String title, float textSize, float centerX, float centerY)
 {
     // If we are invisible, render shortcut notifications.
     // Both child and parent have visible == true even if only child is shown.
@@ -546,9 +546,9 @@ void OptionSelectionMenu::Render(RenderDevice* prender, String title)
     {
         if ( RenderShortcutChangeMessages )
         {
-            renderShortcutChangeMessage(prender);
+            return renderShortcutChangeMessage(prender, textSize, centerX, centerY);
         }
-        return;
+        return Recti ( 0, 0, 0, 0);
     }
 
     title += Label;
@@ -559,8 +559,7 @@ void OptionSelectionMenu::Render(RenderDevice* prender, String title)
         if (title.GetSize() > 0)
             title += " > ";
 
-        GetSubmenu()->Render(prender, title);
-        return;
+        return GetSubmenu()->Render(prender, title, textSize, centerX, centerY);
     }
 
     Color focusColor(180, 80, 20, 210);
@@ -577,7 +576,6 @@ void OptionSelectionMenu::Render(RenderDevice* prender, String title)
     Vector2f labelSelectionRect[2];
     Vector2f valueSelectionRect[2];
 
-    float textSize = 22.0f;
     prender->MeasureText(&DejaVu, "      ", textSize, bufferSize);
 
     String values;
@@ -629,6 +627,8 @@ void OptionSelectionMenu::Render(RenderDevice* prender, String title)
                                 + Vector2f(labelsSize[0], labelsSize[1]);
     
     Vector2f fudgeOffset= Vector2f(10.0f, 25.0f);  // This offset looks better
+    fudgeOffset.x += centerX;
+    fudgeOffset.y += centerY;
     Vector2f topLeft    = (-totalDimensions / 2.0f)  + fudgeOffset;    
     Vector2f bottomRight = topLeft + totalDimensions;
 
@@ -640,6 +640,11 @@ void OptionSelectionMenu::Render(RenderDevice* prender, String title)
     }
 
     prender->FillRect(topLeft.x, topLeft.y, bottomRight.x, bottomRight.y, Color(40,40,100,210));
+    Recti bounds;
+    bounds.x = (int)floor(topLeft.x);
+    bounds.y = (int)floor(topLeft.y);
+    bounds.w = (int)ceil(totalDimensions.x);
+    bounds.h = (int)ceil(totalDimensions.y);
 
     Vector2f labelsPos = topLeft + borderSize;
     Vector2f valuesPos = labelsPos + Vector2f(labelsSize[0], 0) + Vector2f(bufferSize[0], 0);
@@ -667,6 +672,10 @@ void OptionSelectionMenu::Render(RenderDevice* prender, String title)
     }
 
     // Measure and draw title
+    if ( title.GetLength() == 0 )
+    {
+        title = "Main menu";
+    }
     if (DisplayState == Display_Menu && title.GetLength() > 0)
     {
         Vector2f titleDimensions;
@@ -686,21 +695,29 @@ void OptionSelectionMenu::Render(RenderDevice* prender, String title)
                           
         prender->RenderText(&DejaVu, title.ToCStr(), titleTopLeft.x + borderSize.x,
                             titleTopLeft.y + borderSize.y, textSize, Color(255,255,0,210));
+
+
+        float extraHeight = topLeft.y - titleTopLeft.y;
+        bounds.y -= (int)ceil(extraHeight);
+        bounds.h += (int)ceil(extraHeight);
     }
 
     prender->RenderText(&DejaVu, menuItemsCStr, labelsPos.x, labelsPos.y, textSize, Color(255,255,0,210));
 
     prender->RenderText(&DejaVu, valuesCStr, valuesPos.x, valuesPos.y, textSize, Color(255,255,0,210));
+
+    return bounds;
 }
 
 
-void OptionSelectionMenu::renderShortcutChangeMessage(RenderDevice* prender)
+Recti OptionSelectionMenu::renderShortcutChangeMessage(RenderDevice* prender, float textSize, float centerX, float centerY)
 {
     if (ovr_GetTimeInSeconds() < PopupMessageTimeout)
     {
-        DrawTextBox(prender, 0, 120, 22.0f, PopupMessage.ToCStr(),
-                    DrawText_Center | (PopupMessageBorder ? DrawText_Border : 0));
+        return DrawTextBox(prender, centerX, centerY+120.0f, textSize, PopupMessage.ToCStr(),
+                           DrawText_Center | (PopupMessageBorder ? DrawText_Border : 0));
     }
+    return Recti(0, 0, 0, 0);
 }
 
 
@@ -902,7 +919,8 @@ void OptionSelectionMenu::HandleSingleItemToggle()
 //-------------------------------------------------------------------------------------
 // **** Text Rendering / Management 
 
-void DrawTextBox(RenderDevice* prender, float x, float y,
+// Returns bounds of render.
+Recti DrawTextBox(RenderDevice* prender, float x, float y,
                  float textSize, const char* text, unsigned centerType)
 {
     float ssize[2] = {0.0f, 0.0f};
@@ -925,15 +943,18 @@ void DrawTextBox(RenderDevice* prender, float x, float y,
     if (centerType & DrawText_Border)    
         linesHeight = 10.0f;    
 
-    prender->FillRect(x-borderSize, y-borderSize - linesHeight,
-                      x+ssize[0]+borderSize, y+ssize[1]+borderSize + linesHeight,
+    float l = x-borderSize;
+    float t = y-borderSize - linesHeight;
+    float r = x+ssize[0]+borderSize;
+    float b = y+ssize[1]+borderSize + linesHeight;
+    prender->FillRect(l, t, r, b,
                       Color(40,40,100,210));
 
     if (centerType & DrawText_Border)
     {
         // Add top & bottom lines
-        float topLineY      = y-borderSize - linesHeight * 0.5f,
-              bottomLineY   = y+ssize[1]+borderSize + linesHeight * 0.5f;
+        float topLineY      = y-borderSize - linesHeight * 0.5f;
+        float bottomLineY   = y+ssize[1]+borderSize + linesHeight * 0.5f;
 
         prender->FillRect(x-borderSize * 0.5f, topLineY,
                           x+ssize[0]+borderSize * 0.5f, topLineY + 2.0f,
@@ -943,7 +964,15 @@ void DrawTextBox(RenderDevice* prender, float x, float y,
                           Color(255,255,0,210));
     }
 
+    Recti bounds;
+    bounds.x = (int)floorf(l);
+    bounds.y = (int)floorf(t);
+    bounds.w = (int)ceilf(r - l);
+    bounds.h = (int)ceilf(b - t);
+
     prender->RenderText(&DejaVu, text, x, y, textSize, Color(255,255,0,210));
+
+    return bounds;
 }
 
 void CleanupDrawTextFont()

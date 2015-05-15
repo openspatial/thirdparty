@@ -58,16 +58,4 @@ double PlatformCore::GetAppTime() const
     return OVR::Timer::GetSeconds() - StartupSeconds;
 }
 
-bool PlatformCore::SetFullscreen(const Render::RendererParams&, int fullscreen)
-{
-    if (pRender)
-        return pRender->SetFullscreen((Render::DisplayMode)fullscreen);
-    return 0;
-}
-
-Render::DisplayId PlatformCore::GetDisplay(int screen)
-{
-    OVR_UNUSED(screen); return Render::DisplayId();
-}
-
 }}

@@ -102,7 +102,7 @@ public:
 		Quit = 1; ExitCode = exitcode;
 	}
 
-    RenderDevice* SetupGraphics(const SetupGraphicsDeviceSet& setupGraphicsDesc,
+    RenderDevice* SetupGraphics(ovrHmd hmd, const SetupGraphicsDeviceSet& setupGraphicsDesc,
                                 const char* type,
                                 const Render::RendererParams& rp);
 

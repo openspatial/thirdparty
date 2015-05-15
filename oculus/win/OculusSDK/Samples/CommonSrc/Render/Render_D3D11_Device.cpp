@@ -38,8 +38,6 @@ limitations under the License.
 #include "Util/Util_ImageWindow.h"
 #include "Kernel/OVR_Log.h"
 
-#include "OVR_CAPI_D3D.h"
-
 namespace OVR { namespace Render { namespace D3D11 {
 
 using namespace D3DUtil;
@@ -242,6 +240,24 @@ static const char* AlphaBlendedTexturePixelShaderSrc =
     "	finalColor.rgb *= finalColor.a;\n"
     "	return finalColor;\n"
     "}\n";
+
+static const char* AlphaPremultTexturePixelShaderSrc =
+    "Texture2D Texture : register(t0);\n"
+    "SamplerState Linear : register(s0);\n"
+    "struct Varyings\n"
+    "{\n"
+    "   float4 Position : SV_Position;\n"
+    "   float4 Color    : COLOR0;\n"
+    "   float2 TexCoord : TEXCOORD0;\n"
+    "};\n"
+    "float4 main(in Varyings ov) : SV_Target\n"
+    "{\n"
+    "	float4 finalColor = ov.Color;\n"
+    "	finalColor *= Texture.Sample(Linear, ov.TexCoord);\n"
+    // texture should already be in premultiplied alpha
+    "	return finalColor;\n"
+    "}\n";
+
 #pragma endregion
 
 #pragma region Distortion shaders
@@ -687,6 +703,7 @@ static ShaderSource FShaderSrcs[FShader_Count] =
     { "ps_4_0", TexturePixelShaderSrc },
     { "ps_4_0", AlphaTexturePixelShaderSrc },
     { "ps_4_0", AlphaBlendedTexturePixelShaderSrc },
+    { "ps_4_0", AlphaPremultTexturePixelShaderSrc },
     { "ps_4_0", PostProcessPixelShaderWithChromAbSrc },
     { "ps_4_0", LitSolidPixelShaderSrc },
     { "ps_4_0", LitTexturePixelShaderSrc },
@@ -698,7 +715,8 @@ static ShaderSource FShaderSrcs[FShader_Count] =
 };
 
 
-RenderDevice::RenderDevice(const RendererParams& p, HWND window) :
+RenderDevice::RenderDevice(ovrHmd hmd, const RendererParams& p, HWND window) :
+    Render::RenderDevice(hmd),
     DXGIFactory(),
     Window(window),
     Device(),
@@ -734,6 +752,9 @@ RenderDevice::RenderDevice(const RendererParams& p, HWND window) :
     //CommonUniforms[];
     ExtraShaders(),
     DefaultFill(),
+    DefaultTextureFill(),
+    DefaultTextureFillAlpha(),
+    DefaultTextureFillPremult(),
     QuadVertexBuffer(),
     DepthBuffers()
 {
@@ -758,45 +779,23 @@ RenderDevice::RenderDevice(const RendererParams& p, HWND window) :
 
     Params = p;
     DXGIFactory = NULL;
-    hr = CreateDXGIFactory(__uuidof(IDXGIFactory), (void**)(&DXGIFactory.GetRawRef()));
+    hr = CreateDXGIFactory1(__uuidof(IDXGIFactory), (void**)(&DXGIFactory.GetRawRef()));
     OVR_D3D_CHECK_RET(hr);
-
-    // Find the adapter & output (monitor) to use for fullscreen, based on the reported name of the HMD's monitor.
-    if (Params.Display.MonitorName.GetLength() > 0)
-    {
-        for (UINT AdapterIndex = 0;; AdapterIndex++)
-        {
-            Adapter = NULL;
-            hr = DXGIFactory->EnumAdapters(AdapterIndex, &Adapter.GetRawRef());
-            if (hr == DXGI_ERROR_NOT_FOUND)
-                break;
-            OVR_D3D_CHECK_RET(hr);
-
-            DXGI_ADAPTER_DESC Desc;
-            hr = Adapter->GetDesc(&Desc);
-            OVR_D3D_CHECK_RET(hr);
-
-            UpdateMonitorOutputs();
-
-            if (FullscreenOutput)
-                break;
-        }
-
-        if (!FullscreenOutput)
-            Adapter = NULL;
-    }
 
     if (!Adapter)
     {
         hr = DXGIFactory->EnumAdapters(0, &Adapter.GetRawRef());
         OVR_D3D_CHECK_RET(hr);
-        UpdateMonitorOutputs();
     }
 
     int flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 
+    // FIXME: Disable debug device creation while
+    // we find the source of the debug slowdown.
+#if 0
     if (p.DebugEnabled)
         flags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
 
     Device = NULL;
     Context = NULL;
@@ -808,9 +807,6 @@ RenderDevice::RenderDevice(const RendererParams& p, HWND window) :
 
     if (!RecreateSwapChain())
         return;
-
-    if (Params.Fullscreen)
-        SwapChain->SetFullscreenState(1, FullscreenOutput);
 
     CurRenderTarget = NULL;
     for (int i = 0; i < Shader_Count; i++)
@@ -878,6 +874,15 @@ RenderDevice::RenderDevice(const RendererParams& p, HWND window) :
     gouraudShaders->SetShader(PixelShaders[FShader_Gouraud]);
     DefaultFill = *new ShaderFill(gouraudShaders);
 
+    DefaultTextureFill        = CreateTextureFill ( NULL, false, false );
+    DefaultTextureFillAlpha   = CreateTextureFill ( NULL, true, false );
+    DefaultTextureFillPremult = CreateTextureFill ( NULL, false, true );
+    // One day, I will understand smart pointers. Today is not that day...
+    DefaultTextureFill->Release();
+    DefaultTextureFillAlpha->Release();
+    DefaultTextureFillPremult->Release();
+
+
     D3D11_BLEND_DESC bm;
     memset(&bm, 0, sizeof(bm));
     bm.RenderTarget[0].BlendEnable = true;
@@ -909,24 +914,32 @@ RenderDevice::RenderDevice(const RendererParams& p, HWND window) :
     }
 
     SetDepthMode(0, 0);
+
+    Blitter = *new D3DUtil::Blitter(Device);
+    if (!Blitter->Initialize())
+    {
+        OVR_ASSERT(false);
+    }
 }
 
 RenderDevice::~RenderDevice()
 {
-    HRESULT hr;
-
-    if (SwapChain && Params.Fullscreen)
-    {
-        hr = SwapChain->SetFullscreenState(false, NULL);
-        OVR_D3D_CHECK_RET(hr);
-    }
+    DefaultTextureFill.Clear();
+    DefaultTextureFillAlpha.Clear();
+    DefaultTextureFillPremult.Clear();
 }
 
+void RenderDevice::DeleteFills()
+{
+    DefaultTextureFill.Clear();
+    DefaultTextureFillAlpha.Clear();
+    DefaultTextureFillPremult.Clear();
+}
 
 // Implement static initializer function to create this class.
-Render::RenderDevice* RenderDevice::CreateDevice(const RendererParams& rp, void* oswnd)
+Render::RenderDevice* RenderDevice::CreateDevice(ovrHmd hmd, const RendererParams& rp, void* oswnd)
 {
-    Render::D3D11::RenderDevice* render = new RenderDevice(rp, (HWND)oswnd);
+    Render::D3D11::RenderDevice* render = new RenderDevice(hmd, rp, (HWND)oswnd);
 
     // Sanity check to make sure our resources were created.
     // This should stop a lot of driver related crashes we have experienced
@@ -942,108 +955,6 @@ Render::RenderDevice* RenderDevice::CreateDevice(const RendererParams& rp, void*
     return render;
 }
 
-
-// Fallback monitor enumeration in case newly plugged in monitor wasn't detected.
-// Added originally for the FactoryTest app.
-// New Outputs don't seem to be detected unless adapter is re-created, but that would also
-// require us to re-initialize D3D10 (recreating objects, etc). This bypasses that for "fake"
-// fullscreen modes.
-BOOL CALLBACK MonitorEnumFunc(HMONITOR hMonitor, HDC, LPRECT, LPARAM dwData)
-{
-    RenderDevice* renderer = (RenderDevice*)dwData;
-
-    MONITORINFOEXA monitor;
-    monitor.cbSize = sizeof(monitor);
-
-    if (::GetMonitorInfoA(hMonitor, &monitor) && monitor.szDevice[0])
-    {
-        DISPLAY_DEVICEA dispDev;
-        memset(&dispDev, 0, sizeof(dispDev));
-        dispDev.cb = sizeof(dispDev);
-
-        if (::EnumDisplayDevicesA(monitor.szDevice, 0, &dispDev, 0))
-        {
-            if (strstr(String(dispDev.DeviceName).ToCStr(), renderer->GetParams().Display.MonitorName.ToCStr()))
-            {
-                renderer->FSDesktopX = monitor.rcMonitor.left;
-                renderer->FSDesktopY = monitor.rcMonitor.top;
-                return FALSE;
-            }
-        }
-    }
-
-    return TRUE;
-}
-
-
-void RenderDevice::UpdateMonitorOutputs(bool needRecreate)
-{
-    HRESULT hr;
-
-    if (needRecreate)
-    {
-        // need to recreate DXGIFactory and Adapter in order 
-        // to get latest info about monitors.
-        if (SwapChain)
-        {
-            hr = SwapChain->SetFullscreenState(FALSE, NULL);
-            OVR_D3D_CHECK_RET(hr);
-            SwapChain = NULL;
-        }
-
-        DXGIFactory = NULL;
-        Adapter = NULL;
-        hr = CreateDXGIFactory(__uuidof(IDXGIFactory), (void**)(&DXGIFactory.GetRawRef()));
-        OVR_D3D_CHECK_RET(hr);
-        hr = DXGIFactory->EnumAdapters(0, &Adapter.GetRawRef());
-        OVR_D3D_CHECK_RET(hr);
-    }
-
-    bool deviceNameFound = false;
-
-    for (UINT OutputIndex = 0;; OutputIndex++)
-    {
-        Ptr<IDXGIOutput> Output;
-        hr = Adapter->EnumOutputs(OutputIndex, &Output.GetRawRef());
-        if (hr == DXGI_ERROR_NOT_FOUND)
-        {
-            break;
-        }
-        OVR_D3D_CHECK_RET(hr);
-
-        DXGI_OUTPUT_DESC OutDesc;
-        Output->GetDesc(&OutDesc);
-
-        MONITORINFOEXA monitor;
-        monitor.cbSize = sizeof(monitor);
-        if (::GetMonitorInfoA(OutDesc.Monitor, &monitor) && monitor.szDevice[0])
-        {
-            DISPLAY_DEVICEA dispDev;
-            memset(&dispDev, 0, sizeof(dispDev));
-            dispDev.cb = sizeof(dispDev);
-
-            if (::EnumDisplayDevicesA(monitor.szDevice, 0, &dispDev, 0))
-            {
-                if (strstr(String(dispDev.DeviceName).ToCStr(), Params.Display.MonitorName.ToCStr()))
-                {
-                    deviceNameFound = true;
-                    FullscreenOutput = Output;
-                    FSDesktopX = monitor.rcMonitor.left;
-                    FSDesktopY = monitor.rcMonitor.top;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (!deviceNameFound && !Params.Display.MonitorName.IsEmpty())
-    {
-        if (!EnumDisplayMonitors(0, 0, MonitorEnumFunc, (LPARAM)this))
-        {
-            OVR_ASSERT(false);
-        }
-    }
-}
 
 bool RenderDevice::RecreateSwapChain()
 {
@@ -1061,15 +972,13 @@ bool RenderDevice::RecreateSwapChain()
     scDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     scDesc.BufferUsage |= DXGI_USAGE_UNORDERED_ACCESS;
     scDesc.OutputWindow = Window;
-    scDesc.SampleDesc.Count = Params.Multisample;
+    scDesc.SampleDesc.Count = 1;
+    OVR_ASSERT ( scDesc.SampleDesc.Count >= 1 );        // 0 is no longer valid.
     scDesc.SampleDesc.Quality = 0;
-    scDesc.Windowed = Params.Fullscreen != Display_Fullscreen;
-    scDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+    scDesc.Windowed = TRUE;
 
     if (SwapChain)
     {
-        hr = SwapChain->SetFullscreenState(FALSE, NULL);
-        OVR_D3D_CHECK_RET_FALSE(hr);
         SwapChain = NULL;
     }
 
@@ -1090,11 +999,11 @@ bool RenderDevice::RecreateSwapChain()
     hr = Device->CreateUnorderedAccessView(BackBuffer, NULL, &BackBufferUAV.GetRawRef());
     OVR_D3D_CHECK_RET_FALSE(hr);
 
-    Texture* depthBuffer = GetDepthBuffer(WindowWidth, WindowHeight, Params.Multisample);
+    Texture* depthBuffer = GetDepthBuffer(WindowWidth, WindowHeight, 1);
     CurDepthBuffer = depthBuffer;
     if (CurRenderTarget == NULL && depthBuffer != NULL)
     {
-        Context->OMSetRenderTargets(1, &BackBufferRT.GetRawRef(), depthBuffer->TexDsv);
+        Context->OMSetRenderTargets(1, &BackBufferRT.GetRawRef(), depthBuffer->GetDsv());
     }
 
     return true;
@@ -1102,29 +1011,8 @@ bool RenderDevice::RecreateSwapChain()
 
 bool RenderDevice::SetParams(const RendererParams& newParams)
 {
-    String oldMonitor = Params.Display.MonitorName;
-
     Params = newParams;
-    if (newParams.Display.MonitorName != oldMonitor)
-    {
-        UpdateMonitorOutputs(true);
-    }
-
     return RecreateSwapChain();
-}
-
-ovrRenderAPIConfig RenderDevice::Get_ovrRenderAPIConfig() const
-{
-    static ovrD3D11Config cfg;
-    cfg.D3D11.Header.API = ovrRenderAPI_D3D11;
-    cfg.D3D11.Header.BackBufferSize = Sizei(WindowWidth, WindowHeight);
-    cfg.D3D11.Header.Multisample = Params.Multisample;
-    cfg.D3D11.pDevice = Device;
-    cfg.D3D11.pDeviceContext = Context;
-    cfg.D3D11.pBackBufferRT = BackBufferRT;
-    cfg.D3D11.pBackBufferUAV = BackBufferUAV;
-    cfg.D3D11.pSwapChain = SwapChain;
-    return cfg.Config;
 }
 
 ovrTexture Texture::Get_ovrTexture()
@@ -1136,9 +1024,7 @@ ovrTexture Texture::Get_ovrTexture()
     ovrD3D11TextureData* texData = (ovrD3D11TextureData*)&tex;
     texData->Header.API = ovrRenderAPI_D3D11;
     texData->Header.TextureSize = newRTSize;
-    texData->Header.RenderViewport = Recti(newRTSize);
-    texData->pTexture = Tex;
-    texData->pSRView = TexSv;
+    texData->pTexture = GetTex();
 
     return tex;
 }
@@ -1151,59 +1037,6 @@ void RenderDevice::SetWindowSize(int w, int h)
     // compatibility mode
     OVR_UNUSED(w);
     OVR_UNUSED(h);
-}
-
-bool RenderDevice::SetFullscreen(DisplayMode fullscreen)
-{
-    HRESULT hr;
-
-    if (fullscreen == Params.Fullscreen)
-    {
-        return true;
-    }
-
-    if (Params.Fullscreen == Display_FakeFullscreen)
-    {
-        SetWindowLong(Window, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPSIBLINGS);
-        SetWindowPos(Window, NULL, PreFullscreenX, PreFullscreenY,
-            PreFullscreenW, PreFullscreenH, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-    }
-
-    if (fullscreen == Display_FakeFullscreen)
-    {
-        // Get WINDOWPLACEMENT before changing style to get OVERLAPPED coordinates,
-        // which we will restore.
-        WINDOWPLACEMENT wp;
-        wp.length = sizeof(wp);
-        GetWindowPlacement(Window, &wp);
-        PreFullscreenW = wp.rcNormalPosition.right - wp.rcNormalPosition.left;
-        PreFullscreenH = wp.rcNormalPosition.bottom - wp.rcNormalPosition.top;
-        PreFullscreenX = wp.rcNormalPosition.left;
-        PreFullscreenY = wp.rcNormalPosition.top;
-        // Warning: SetWindowLong sends message computed based on old size (incorrect).
-        // A proper work-around would be to mask that message out during window frame change in Platform.
-        SetWindowLong(Window, GWL_STYLE, WS_OVERLAPPED | WS_VISIBLE | WS_CLIPSIBLINGS);
-        SetWindowPos(Window, NULL, FSDesktopX, FSDesktopY, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-
-        // Relocate cursor into the window to avoid losing focus on first click.
-        POINT oldCursor;
-        if (GetCursorPos(&oldCursor) &&
-            ((oldCursor.x < FSDesktopX) || (oldCursor.x >(FSDesktopX + PreFullscreenW)) ||
-            (oldCursor.y < FSDesktopY) || (oldCursor.x >(FSDesktopY + PreFullscreenH))))
-        {
-            // TBD: FullScreen window logic should really be in platform; it causes world rotation
-            // in relative mouse mode.
-            ::SetCursorPos(FSDesktopX, FSDesktopY);
-        }
-    }
-    else
-    {
-        hr = SwapChain->SetFullscreenState(fullscreen, fullscreen ? FullscreenOutput : NULL);
-        OVR_D3D_CHECK_RET_FALSE(hr);
-    }
-
-    Params.Fullscreen = fullscreen;
-    return true;
 }
 
 void RenderDevice::SetViewport(const Recti& vp)
@@ -1289,13 +1122,13 @@ void RenderDevice::Clear(float r /*= 0*/, float g /*= 0*/, float b /*= 0*/, floa
         }
         else
         {
-            Context->ClearRenderTargetView(CurRenderTarget->TexRtv, color);
+            Context->ClearRenderTargetView(CurRenderTarget->GetRtv(), color);
         }
     }
 
     if (clearDepth)
     {
-        Context->ClearDepthStencilView(CurDepthBuffer->TexDsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, depth, 0);
+        Context->ClearDepthStencilView(CurDepthBuffer->GetDsv(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, depth, 0);
     }
 }
 
@@ -1567,7 +1400,7 @@ void ShaderBase::InitUniforms(ID3D10Blob* s)
     hr = buf->GetDesc(&bufd);
     if (FAILED(hr))
     {
-        // This failure is normal for our shaders.
+        // This failure is normal - it means there are no constants in this shader.
         return;
     }
 
@@ -1703,11 +1536,28 @@ ShaderBase* RenderDevice::CreateStereoShader(PrimitiveType prim, Render::Shader*
     return pStereoShaders[prim];
 }
 
-Fill* RenderDevice::CreateSimpleFill(int flags)
+Fill* RenderDevice::GetSimpleFill(int flags)
 {
     OVR_UNUSED(flags);
     return DefaultFill;
 }
+
+Fill* RenderDevice::GetTextureFill(Render::Texture* t, bool useAlpha, bool usePremult)
+{
+    Fill *f = DefaultTextureFill;
+    if ( usePremult )
+    {
+        f = DefaultTextureFillPremult;
+    }
+    else if ( useAlpha )
+    {
+        f = DefaultTextureFillAlpha;
+    }
+	f->SetTexture(0, t);
+	return f;
+}
+
+
 
 // Textures
 
@@ -1746,9 +1596,11 @@ ID3D11SamplerState* RenderDevice::GetSamplerState(int sm)
     return SamplerStates[sm];
 }
 
-Texture::Texture(RenderDevice* ren, int fmt, int w, int h) :
+Texture::Texture(ovrHmd hmd, RenderDevice* ren, int fmt, int w, int h) :
+    Hmd(hmd),
     Ren(ren),
-    Tex(NULL),
+    TextureSet(NULL),
+    MirrorTex(NULL),
     TexSv(NULL),
     TexRtv(NULL),
     TexDsv(NULL),
@@ -1762,13 +1614,19 @@ Texture::Texture(RenderDevice* ren, int fmt, int w, int h) :
     Sampler = Ren->GetSamplerState(0);
 }
 
-void* Texture::GetInternalImplementation()
-{
-    return Tex;
-}
-
 Texture::~Texture()
 {
+    if (TextureSet)
+    {
+        ovrHmd_DestroySwapTextureSet(Hmd, TextureSet);
+        TextureSet = nullptr;
+    }
+
+    if (MirrorTex)
+    {
+        ovrHmd_DestroyMirrorTexture(Hmd, MirrorTex);
+        MirrorTex = nullptr;
+    }
 }
 
 void Texture::Set(int slot, Render::ShaderStage stage) const
@@ -1786,7 +1644,7 @@ void RenderDevice::SetTexture(Render::ShaderStage stage, int slot, const Texture
     if (MaxTextureSet[stage] <= slot)
         MaxTextureSet[stage] = slot + 1;
 
-    ID3D11ShaderResourceView* sv = t ? t->TexSv : NULL;
+    ID3D11ShaderResourceView* sv = t ? t->GetSv() : NULL;
     switch (stage)
     {
     case Shader_Pixel:
@@ -1982,7 +1840,7 @@ Texture* RenderDevice::CreateTexture(int format, int width, int height, const vo
             return NULL;
         }
 
-        Ptr<Texture> NewTex = *new Texture(this, format, largestMipWidth, largestMipHeight);
+        Ptr<Texture> NewTex = *new Texture(Hmd, this, format, largestMipWidth, largestMipHeight);
         // BCn/DXTn - no AA.
         NewTex->Samples = 1;
 
@@ -2011,9 +1869,11 @@ Texture* RenderDevice::CreateTexture(int format, int width, int height, const vo
         SRVDesc.ViewDimension = D3D_SRV_DIMENSION_TEXTURE2D;
         SRVDesc.Texture2D.MipLevels = desc.MipLevels;
 
-        NewTex->TexSv = NULL;
-        hr = Device->CreateShaderResourceView(NewTex->Tex, NULL, &NewTex->TexSv.GetRawRef());
+        Ptr<ID3D11ShaderResourceView> srv;
+        hr = Device->CreateShaderResourceView(NewTex->Tex, NULL, &srv.GetRawRef());
         OVR_D3D_CHECK_RET_NULL(hr);
+
+        NewTex->TexSv.PushBack(srv);
 
         NewTex->AddRef();
         return NewTex;
@@ -2057,13 +1917,13 @@ Texture* RenderDevice::CreateTexture(int format, int width, int height, const vo
             return NULL;
         }
 
-        Ptr<Texture> NewTex = *new Texture(this, format, width, height);
+        Ptr<Texture> NewTex = *new Texture(Hmd, this, format, width, height);
         NewTex->Samples = samples;
 
         D3D11_TEXTURE2D_DESC dsDesc;
         dsDesc.Width = width;
         dsDesc.Height = height;
-        dsDesc.MipLevels = (format == (Texture_RGBA | Texture_GenMipmaps) && data) ? GetNumMipLevels(width, height) : 1;
+        dsDesc.MipLevels = (((format & Texture_GenMipmaps)!=0) && data) ? GetNumMipLevels(width, height) : 1;
         dsDesc.ArraySize = 1;
         dsDesc.Format = d3dformat;
         dsDesc.SampleDesc.Count = samples;
@@ -2082,85 +1942,138 @@ Texture* RenderDevice::CreateTexture(int format, int width, int height, const vo
             dsDesc.BindFlags |= D3D11_BIND_RENDER_TARGET;
         }
 
-        NewTex->Tex = NULL;
-        hr = Device->CreateTexture2D(&dsDesc, NULL, &NewTex->Tex.GetRawRef());
-        OVR_D3D_CHECK_RET_NULL(hr);
+        int count = 1;
 
-        if (dsDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE)
+        // Only need to create full texture set for render targets
+        if (format & Texture_Mirror)
         {
-            if ((dsDesc.BindFlags & D3D11_BIND_DEPTH_STENCIL) > 0 && createDepthSrv)
+            ovrHmd_CreateMirrorTextureD3D11(Hmd, Device, &dsDesc, &NewTex->MirrorTex);
+            if (!NewTex->MirrorTex)
             {
-                D3D11_SHADER_RESOURCE_VIEW_DESC depthSrv;
-                depthSrv.Format = DXGI_FORMAT_R32_FLOAT;
-                depthSrv.ViewDimension = samples > 1 ? D3D11_SRV_DIMENSION_TEXTURE2DMS : D3D11_SRV_DIMENSION_TEXTURE2D;
-                depthSrv.Texture2D.MostDetailedMip = 0;
-                depthSrv.Texture2D.MipLevels = dsDesc.MipLevels;
-                NewTex->TexSv = NULL;
-                hr = Device->CreateShaderResourceView(NewTex->Tex, &depthSrv, &NewTex->TexSv.GetRawRef());
-                OVR_D3D_CHECK_RET_NULL(hr);
+                OVR_ASSERT(false);
+                return NULL;
             }
-            else
+
+            ovrD3D11Texture* tex = (ovrD3D11Texture*)NewTex->MirrorTex;
+            NewTex->Tex = tex->D3D11.pTexture;
+            NewTex->TexSv.PushBack(tex->D3D11.pSRView);
+
+            NewTex->AddRef();
+            return NewTex;
+        }
+        else if (format & Texture_SwapTextureSet)
+        {
+            // Can do this with rendertargets, depth buffers, or normal textures, but *not* MSAA.
+            OVR_ASSERT ( samples == 1);
+
+            ovrHmd_CreateSwapTextureSetD3D11(Hmd, Device.GetPtr(), &dsDesc, &NewTex->TextureSet);
+            if (!NewTex->TextureSet)
             {
-                NewTex->TexSv = NULL;
-                hr = Device->CreateShaderResourceView(NewTex->Tex, NULL, &NewTex->TexSv.GetRawRef());
-                OVR_D3D_CHECK_RET_NULL(hr);
+                OVR_ASSERT(false);
+                return NULL;
             }
+
+            // Sanity-check - find out what type of resource we actually got back.
+            Ptr<ID3D11Texture2D> tex = ((ovrD3D11Texture*)&NewTex->TextureSet->Textures[0])->D3D11.pTexture;
+            D3D11_TEXTURE2D_DESC desc;
+            tex->GetDesc ( &desc );
+
+            count = NewTex->TextureSet->TextureCount;
+        }
+        else
+        {
+            NewTex->Tex = NULL;
+            hr = Device->CreateTexture2D(&dsDesc, nullptr, &NewTex->Tex.GetRawRef());
+            OVR_D3D_CHECK_RET_NULL(hr);
         }
 
-        if (data)
+        for (int i = 0; i < count; ++i)
         {
-            Context->UpdateSubresource(NewTex->Tex, 0, NULL, data, width * bpp, width * height * bpp);
-            if (format == (Texture_RGBA | Texture_GenMipmaps))
-            {
-                int srcw = width, srch = height;
-                int level = 0;
-                uint8_t* mipmaps = NULL;
-                do
-                {
-                    level++;
-                    int mipw = srcw >> 1;
-                    if (mipw < 1)
-                    {
-                        mipw = 1;
-                    }
-                    int miph = srch >> 1;
-                    if (miph < 1)
-                    {
-                        miph = 1;
-                    }
-                    if (mipmaps == NULL)
-                    {
-                        mipmaps = (uint8_t*)OVR_ALLOC(mipw * miph * 4);
-                    }
-                    FilterRgba2x2(level == 1 ? (const uint8_t*)data : mipmaps, srcw, srch, mipmaps);
-                    Context->UpdateSubresource(NewTex->Tex, level, NULL, mipmaps, mipw * bpp, miph * bpp);
-                    srcw = mipw;
-                    srch = miph;
-                } while (srcw > 1 || srch > 1);
+            Ptr<ID3D11Texture2D> tex = NewTex->Tex ? NewTex->Tex : ((ovrD3D11Texture*)&NewTex->TextureSet->Textures[i])->D3D11.pTexture;
 
-                if (mipmaps != NULL)
+            if (dsDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE)
+            {
+                Ptr<ID3D11ShaderResourceView> srv;
+
+                if (dsDesc.BindFlags & D3D11_BIND_DEPTH_STENCIL)
                 {
-                    OVR_FREE(mipmaps);
+                    D3D11_SHADER_RESOURCE_VIEW_DESC depthSrv;
+                    depthSrv.Format = DXGI_FORMAT_R32_FLOAT;
+                    depthSrv.ViewDimension = samples > 1 ? D3D11_SRV_DIMENSION_TEXTURE2DMS : D3D11_SRV_DIMENSION_TEXTURE2D;
+                    depthSrv.Texture2D.MostDetailedMip = 0;
+                    depthSrv.Texture2D.MipLevels = dsDesc.MipLevels;
+
+                    hr = Device->CreateShaderResourceView(tex, &depthSrv, &srv.GetRawRef());
+                    OVR_D3D_CHECK_RET_NULL(hr);
+                }
+                else
+                {
+                    hr = Device->CreateShaderResourceView(tex, NULL, &srv.GetRawRef());
+                    OVR_D3D_CHECK_RET_NULL(hr);
+                }
+
+                NewTex->TexSv.PushBack(srv);
+            }
+
+            if (data)
+            {
+                Context->UpdateSubresource(tex, 0, NULL, data, width * bpp, width * height * bpp);
+                if (format & Texture_GenMipmaps)
+                {
+                    OVR_ASSERT ( ( format & Texture_TypeMask ) == Texture_RGBA );
+                    int srcw = width, srch = height;
+                    int level = 0;
+                    uint8_t* mipmaps = NULL;
+                    do
+                    {
+                        level++;
+                        int mipw = srcw >> 1;
+                        if (mipw < 1)
+                        {
+                            mipw = 1;
+                        }
+                        int miph = srch >> 1;
+                        if (miph < 1)
+                        {
+                            miph = 1;
+                        }
+                        if (mipmaps == NULL)
+                        {
+                            mipmaps = (uint8_t*)OVR_ALLOC(mipw * miph * 4);
+                        }
+                        FilterRgba2x2(level == 1 ? (const uint8_t*)data : mipmaps, srcw, srch, mipmaps);
+                        Context->UpdateSubresource(tex, level, NULL, mipmaps, mipw * bpp, miph * bpp);
+                        srcw = mipw;
+                        srch = miph;
+                    } while (srcw > 1 || srch > 1);
+
+                    if (mipmaps != NULL)
+                    {
+                        OVR_FREE(mipmaps);
+                    }
                 }
             }
-        }
 
-        if ((format & Texture_TypeMask) == Texture_Depth)
-        {
-            D3D11_DEPTH_STENCIL_VIEW_DESC depthDsv;
-            ZeroMemory(&depthDsv, sizeof(depthDsv));
-            depthDsv.Format = DXGI_FORMAT_D32_FLOAT;
-            depthDsv.ViewDimension = samples > 1 ? D3D11_DSV_DIMENSION_TEXTURE2DMS : D3D11_DSV_DIMENSION_TEXTURE2D;
-            depthDsv.Texture2D.MipSlice = 0;
-            NewTex->TexDsv = NULL;
-            hr = Device->CreateDepthStencilView(NewTex->Tex, createDepthSrv ? &depthDsv : NULL, &NewTex->TexDsv.GetRawRef());
-            OVR_D3D_CHECK_RET_NULL(hr);
-        }
-        else if (format & Texture_RenderTarget)
-        {
-            NewTex->TexRtv = NULL;
-            hr = Device->CreateRenderTargetView(NewTex->Tex, NULL, &NewTex->TexRtv.GetRawRef());
-            OVR_D3D_CHECK_RET_NULL(hr);
+            if ((format & Texture_TypeMask) == Texture_Depth)
+            {
+                D3D11_DEPTH_STENCIL_VIEW_DESC depthDsv;
+                ZeroMemory(&depthDsv, sizeof(depthDsv));
+                depthDsv.Format = DXGI_FORMAT_D32_FLOAT;
+                depthDsv.ViewDimension = samples > 1 ? D3D11_DSV_DIMENSION_TEXTURE2DMS : D3D11_DSV_DIMENSION_TEXTURE2D;
+                depthDsv.Texture2D.MipSlice = 0;
+
+                Ptr<ID3D11DepthStencilView> dsv;
+                hr = Device->CreateDepthStencilView(tex, &depthDsv, &dsv.GetRawRef());
+                OVR_D3D_CHECK_RET_NULL(hr);
+                NewTex->TexDsv.PushBack(dsv);
+            }
+            else if (format & Texture_RenderTarget)
+            {
+                Ptr<ID3D11RenderTargetView> rtv;
+                hr = Device->CreateRenderTargetView(tex, NULL, &rtv.GetRawRef());
+                OVR_D3D_CHECK_RET_NULL(hr);
+                NewTex->TexRtv.PushBack(rtv);
+            }
         }
 
         NewTex->AddRef();
@@ -2180,7 +2093,7 @@ void RenderDevice::ResolveMsaa(OVR::Render::Texture* msaaTex, OVR::Render::Textu
         resolveFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     }
 
-    Context->ResolveSubresource(((Texture*)outputTex)->Tex, 0, ((Texture*)msaaTex)->Tex, 0, resolveFormat);
+    Context->ResolveSubresource(((Texture*)outputTex)->GetTex(), 0, ((Texture*)msaaTex)->GetTex(), 0, resolveFormat);
 }
 
 void RenderDevice::BeginRendering()
@@ -2195,15 +2108,15 @@ void RenderDevice::SetRenderTarget(Render::Texture* color, Render::Texture* dept
     CurRenderTarget = (Texture*)color;
     if (color == NULL)
     {
-        Texture* newDepthBuffer = GetDepthBuffer(WindowWidth, WindowHeight, Params.Multisample);
+        Texture* newDepthBuffer = GetDepthBuffer(WindowWidth, WindowHeight, 1);
         if (newDepthBuffer == NULL)
         {
             OVR_DEBUG_LOG(("New depth buffer creation failed."));
         }
         if (newDepthBuffer != NULL)
         {
-            CurDepthBuffer = GetDepthBuffer(WindowWidth, WindowHeight, Params.Multisample);
-            Context->OMSetRenderTargets(1, &BackBufferRT.GetRawRef(), CurDepthBuffer->TexDsv);
+            CurDepthBuffer = GetDepthBuffer(WindowWidth, WindowHeight, 1);
+            Context->OMSetRenderTargets(1, &BackBufferRT.GetRawRef(), CurDepthBuffer->GetDsv());
         }
         return;
     }
@@ -2220,7 +2133,7 @@ void RenderDevice::SetRenderTarget(Render::Texture* color, Render::Texture* dept
     memset(MaxTextureSet, 0, sizeof(MaxTextureSet));
 
     CurDepthBuffer = (Texture*)depth;
-    Context->OMSetRenderTargets(1, &((Texture*)color)->TexRtv.GetRawRef(), ((Texture*)depth)->TexDsv);
+    Context->OMSetRenderTargets(1, &((Texture*)color)->GetRtv().GetRawRef(), ((Texture*)depth)->GetDsv());
 }
 
 void RenderDevice::SetWorldUniforms(const Matrix4f& proj)
@@ -2229,6 +2142,11 @@ void RenderDevice::SetWorldUniforms(const Matrix4f& proj)
     // Shader constant buffers cannot be partially updated.
 }
 
+void RenderDevice::Blt(Render::Texture* texture)
+{
+    Texture* tex = (Texture*)texture;
+    Blitter->Blt(BackBufferRT.GetPtr(), tex->GetSv().GetPtr());
+}
 
 void RenderDevice::Render(const Matrix4f& matrix, Model* model)
 {

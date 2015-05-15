@@ -43,6 +43,9 @@ limitations under the License.
     #include <GL/glx.h>
 #endif
 
+#include "OVR_CAPI_GL.h"
+#include "Util/Util_GL_Blitter.h"
+
 namespace OVR { namespace Render { namespace GL {
 
 
@@ -184,16 +187,16 @@ public:
     bool GetGLDebugCallback(PFNGLDEBUGMESSAGECALLBACKPROC* debugCallback, const void** userParam) const;
 
 protected:
-    void DebugCallbackInternal(Severity s, const char* pSource, const char* pType, GLuint id, const char* pSeverity, const char* message);
+    void DebugCallbackInternal(Severity s, const char* pSource, const char* pType, GLuint id, const char* pSeverity, const char* message) const;
 
     // ARB and KHR debug handler
-    static void GLAPIENTRY DebugMessageCallback(GLenum Source, GLenum Type, GLuint Id, GLenum Severity, GLsizei Length, const GLchar* Message, GLvoid* UserParam);
+    static void GLAPIENTRY DebugMessageCallback(GLenum Source, GLenum Type, GLuint Id, GLenum Severity, GLsizei Length, const GLchar* Message, const void* UserParam);
     static const char*   GetSource(GLenum Source);
     static const char*   GetType(GLenum Type);
     static const char*   GetSeverity(GLenum Severity);
 
     // AMD handler 
-    static void GLAPIENTRY DebugMessageCallbackAMD(GLuint id, GLenum category, GLenum severity, GLsizei length, const GLchar *message, GLvoid *userParam);
+    static void GLAPIENTRY DebugMessageCallbackAMD(GLuint id, GLenum category, GLenum severity, GLsizei length, const GLchar* message, void* userParam);
     static const char*   GetCategoryAMD(GLenum Category);
 
 protected:
@@ -237,21 +240,29 @@ public:
 class Texture : public Render::Texture
 {
 public:
-    RenderDevice* Ren;
-    GLuint        TexId;
-    int           Width, Height, Samples;
+    ovrHmd          Hmd;
+    RenderDevice*   Ren;
+    ovrSwapTextureSet* TextureSet;
+    ovrTexture*     MirrorTexture;
+    int             Width, Height, Samples;
+    GLuint          TexId;
 
-    Texture(RenderDevice* r, int w, int h, int samples);
+    Texture(ovrHmd hmd, RenderDevice* r, int w, int h, int samples);
     ~Texture();
+
+    GLuint GetTexId() { return TextureSet ? ((ovrGLTexture*)&TextureSet->Textures[TextureSet->CurrentIndex])->OGL.TexId : TexId; }
 
     virtual int GetWidth() const { return Width; }
     virtual int GetHeight() const { return Height; }
     virtual int GetSamples() const { return Samples; }
 
     virtual void SetSampleMode(int);
-    virtual ovrTexture Get_ovrTexture() OVR_OVERRIDE;
 
     virtual void Set(int slot, ShaderStage stage = Shader_Fragment) const;
+
+    virtual ovrTexture Get_ovrTexture() OVR_OVERRIDE;
+
+    virtual ovrSwapTextureSet* Get_ovrTextureSet() OVR_OVERRIDE{ return TextureSet; }
 };
 
 class Shader : public Render::Shader
@@ -334,11 +345,16 @@ class RenderDevice : public Render::RenderDevice
     Ptr<Shader>        VertexShaders[VShader_Count];
     Ptr<Shader>        FragShaders[FShader_Count];
 
-    Ptr<ShaderFill> DefaultFill;
+    Ptr<ShaderFill>         DefaultFill;
+    Ptr<Fill>               DefaultTextureFill;
+    Ptr<Fill>               DefaultTextureFillAlpha;
+    Ptr<Fill>               DefaultTextureFillPremult;
 
     Matrix4f    Proj;
 
     GLuint Vao;
+
+    Ptr<GLUtil::Blitter>    Blitter;
 
 protected:
     Ptr<Texture>             CurRenderTarget;
@@ -350,50 +366,55 @@ protected:
     const LightingParams*    Lighting;
 
 public:
-    RenderDevice(const RendererParams& p);
+    RenderDevice(ovrHmd hmd, const RendererParams& p);
     virtual ~RenderDevice();
 
-    virtual void Shutdown();
-    
-    virtual void FillTexturedRect(float left, float top, float right, float bottom, float ul, float vt, float ur, float vb, Color c, Ptr<OVR::Render::Texture> tex);
+    virtual void DeleteFills() OVR_OVERRIDE;
 
-    virtual void SetViewport(const Recti& vp);
+    virtual void Shutdown() OVR_OVERRIDE;
+    
+    virtual void FillTexturedRect(float left, float top, float right, float bottom, float ul, float vt, float ur, float vb, Color c, Ptr<OVR::Render::Texture> tex, const Matrix4f* view, bool premultAlpha = false) OVR_OVERRIDE;
+
+    virtual void SetViewport(const Recti& vp) OVR_OVERRIDE;
         
-    virtual void WaitUntilGpuIdle();
-    virtual void Flush();
+    virtual void WaitUntilGpuIdle() OVR_OVERRIDE;
+    virtual void Flush() OVR_OVERRIDE;
 
     virtual void Clear(float r = 0, float g = 0, float b = 0, float a = 1, float depth = 1,
-                       bool clearColor = true, bool clearDepth = true);
-    virtual void Rect(float left, float top, float right, float bottom) { OVR_UNUSED4(left,top,right,bottom); }
+                       bool clearColor = true, bool clearDepth = true) OVR_OVERRIDE;
+    virtual void Rect(float left, float top, float right, float bottom)  OVR_OVERRIDE { OVR_UNUSED4(left,top,right,bottom); }
 
-    virtual void BeginRendering();
-    virtual void SetDepthMode(bool enable, bool write, CompareFunc func = Compare_Less);
-    virtual void SetWorldUniforms(const Matrix4f& proj);
+    virtual void BeginRendering() OVR_OVERRIDE;
+    virtual void SetDepthMode(bool enable, bool write, CompareFunc func = Compare_Less) OVR_OVERRIDE;
+    virtual void SetWorldUniforms(const Matrix4f& proj) OVR_OVERRIDE;
 
     Texture* GetDepthBuffer(int w, int h, int ms);
 
     virtual void ResolveMsaa(OVR::Render::Texture* msaaTex, OVR::Render::Texture* outputTex) OVR_OVERRIDE;
 
-    virtual void Present (bool withVsync){OVR_UNUSED(withVsync);};
+    virtual void Present (bool withVsync)  OVR_OVERRIDE {OVR_UNUSED(withVsync);};
     virtual void SetRenderTarget(Render::Texture* color,
-                                 Render::Texture* depth = NULL, Render::Texture* stencil = NULL);
+                                 Render::Texture* depth = NULL, Render::Texture* stencil = NULL) OVR_OVERRIDE;
 
-    virtual void SetLighting(const LightingParams* lt);
+    virtual void SetLighting(const LightingParams* lt) OVR_OVERRIDE;
 
-    virtual void Render(const Matrix4f& matrix, Model* model);
+    virtual void Blt(Render::Texture* texture) OVR_OVERRIDE;
+
+    virtual void Render(const Matrix4f& matrix, Model* model) OVR_OVERRIDE;
     virtual void Render(const Fill* fill, Render::Buffer* vertices, Render::Buffer* indices,
-                        const Matrix4f& matrix, int offset, int count, PrimitiveType prim = Prim_Triangles, MeshType meshType = Mesh_Scene);
+                        const Matrix4f& matrix, int offset, int count, PrimitiveType prim = Prim_Triangles, MeshType meshType = Mesh_Scene) OVR_OVERRIDE;
     virtual void RenderWithAlpha(const Fill* fill, Render::Buffer* vertices, Render::Buffer* indices,
-                                 const Matrix4f& matrix, int offset, int count, PrimitiveType prim = Prim_Triangles);
-    virtual void RenderCompute(const Fill* fill, Render::Buffer* buffer, int invocationSizeInPixels );
+                                 const Matrix4f& matrix, int offset, int count, PrimitiveType prim = Prim_Triangles) OVR_OVERRIDE;
+    virtual void RenderCompute(const Fill* fill, Render::Buffer* buffer, int invocationSizeInPixels ) OVR_OVERRIDE;
 
-    virtual Buffer* CreateBuffer();
-    virtual Texture* CreateTexture(int format, int width, int height, const void* data, int mipcount=1);
-    virtual ShaderSet* CreateShaderSet() { return new ShaderSet; }
+    virtual Buffer* CreateBuffer() OVR_OVERRIDE;
+    virtual Texture* CreateTexture(int format, int width, int height, const void* data, int mipcount = 1) OVR_OVERRIDE;
+    virtual ShaderSet* CreateShaderSet() OVR_OVERRIDE { return new ShaderSet; }
 
-    virtual Fill *CreateSimpleFill(int flags = Fill::F_Solid);
+    virtual Fill *GetSimpleFill(int flags = Fill::F_Solid) OVR_OVERRIDE;
+    virtual Fill *GetTextureFill(Render::Texture* tex, bool useAlpha = false, bool usePremult = false) OVR_OVERRIDE;
 
-    virtual Shader *LoadBuiltinShader(ShaderStage stage, int shader);
+    virtual Shader *LoadBuiltinShader(ShaderStage stage, int shader) OVR_OVERRIDE;
 
     void SetTexture(Render::ShaderStage, int slot, const Texture* t);
 };

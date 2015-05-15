@@ -13,6 +13,9 @@
     <Filter Include="Tracing">
       <UniqueIdentifier>{af8a116e-e692-4597-ba74-77fd10a5276c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Util\Shaders">
+      <UniqueIdentifier>{fc456049-35b9-44d7-b53d-a761c67053e8}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\Src\Kernel\OVR_Delegates.h">
@@ -153,6 +156,12 @@
     <ClInclude Include="..\..\..\Src\Tracing\LibOVREvents.h">
       <Filter>Tracing</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\Src\Util\Util_D3D11_Blitter.h">
+      <Filter>Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Src\Util\Util_GL_Blitter.h">
+      <Filter>Util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\Src\Kernel\OVR_File.cpp">
@@ -162,9 +171,6 @@
       <Filter>Kernel</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\Src\Kernel\OVR_JSON.cpp">
-      <Filter>Kernel</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\Src\Kernel\OVR_Lockless.cpp">
       <Filter>Kernel</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\Src\Kernel\OVR_Log.cpp">
@@ -254,6 +260,12 @@
     <ClCompile Include="..\..\..\Src\Kernel\OVR_Callbacks.cpp">
       <Filter>Kernel</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\Src\Util\Util_D3D11_Blitter.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Src\Util\Util_GL_Blitter.cpp">
+      <Filter>Util</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\Src\Tracing\README.md">
@@ -262,5 +274,16 @@
     <None Include="..\..\..\Src\Tracing\LibOVREvents.man">
       <Filter>Tracing</Filter>
     </None>
+    <None Include="..\..\..\Src\Kernel\OVR_NewOverride.inl">
+      <Filter>Kernel</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="..\..\..\Src\Util\Shaders\Blt_ps.hlsl">
+      <Filter>Util\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\..\..\Src\Util\Shaders\Blt_vs.hlsl">
+      <Filter>Util\Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

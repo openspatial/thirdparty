@@ -112,7 +112,7 @@ Fill* CreateTextureFill(RenderDevice* prender, const String& filename)
     Ptr<File>    imageFile = *new SysFile(filename);
     Ptr<Texture> imageTex;
     if (imageFile->IsValid())
-        imageTex = *LoadTextureTga(prender, imageFile);
+        imageTex = *LoadTextureTgaTopDown(prender, imageFile);
 
     // Image is rendered as a single quad.
     ShaderFill* fill = 0;
@@ -161,6 +161,22 @@ void OculusWorldDemoApp::PopulateScene(const char *fileName)
     Ptr<Fill> imageFill = *CreateTextureFill(pRender, mainFilePathNoExtension + "_OculusCube.tga");
     PopulateCubeFieldScene(&OculusCubesScene, imageFill.GetPtr(), 11, 4, 35, Vector3f(0.0f, 0.0f, -6.0f), 0.5f);
 
+    Ptr<File> imageFile = *new SysFile(mainFilePathNoExtension + "_blueCube.tga");
+    if (imageFile->IsValid())
+        TextureBlueCube = *LoadTextureTgaTopDown(pRender, imageFile, 255, true, true);
+
+    imageFile = *new SysFile(mainFilePathNoExtension + "_redCube.tga");
+    if (imageFile->IsValid())
+        TextureRedCube = *LoadTextureTgaTopDown(pRender, imageFile, 255, true, true);
+
+    imageFile = *new SysFile(mainFilePathNoExtension + "_OculusCube.tga");
+    if (imageFile->IsValid())
+        TextureOculusCube = *LoadTextureTgaTopDown(pRender, imageFile, 255, true, true);
+
+    imageFile = *new SysFile(mainFilePathNoExtension + "_Cockpit_Panel.tga");
+    if (imageFile->IsValid())
+        CockpitPanelTexture = *LoadTextureTgaTopDown(pRender, imageFile, 255, true, true);
+
 
 }
 
@@ -173,7 +189,7 @@ void OculusWorldDemoApp::PopulatePreloadScene()
     Ptr<File>    imageFile = *new SysFile(fileName + "_LoadScreen.tga");
     Ptr<Texture> imageTex;
     if (imageFile->IsValid())
-        imageTex = *LoadTextureTga(pRender, imageFile);
+        imageTex = *LoadTextureTgaTopDown(pRender, imageFile);
 
     // Image is rendered as a single quad.
     if (imageTex)
@@ -302,10 +318,8 @@ void OculusWorldDemoApp::RenderAnimatedBlocks(ovrEyeType eye, double appTime)
     }
 }
 
-void OculusWorldDemoApp::RenderGrid(ovrEyeType eye)
+void OculusWorldDemoApp::RenderGrid(ovrEyeType eye, Recti renderViewport)
 {
-    Recti renderViewport = EyeTexture[eye].Header.RenderViewport;    
-
     // Draw actual pixel grid on the RT.
     // 1:1 mapping to screen pixels, origin in top-left.
     Matrix4f ortho;
@@ -316,9 +330,10 @@ void OculusWorldDemoApp::RenderGrid(ovrEyeType eye)
     ortho.M[1][3] = 1.0f;                            // Y offset (Y=down)
     ortho.M[2][2] = 0;
     pRender->SetProjection(ortho);
+    pRender->SetViewport(renderViewport);
 
     pRender->SetDepthMode(false, false);
-    Color cNormal ( 255, 0, 0 );
+    Color cNormal ( 0, 255, 0 );        // Green is the least-smeared colour from CA.
     Color cSpacer ( 255, 255, 0 );
     Color cMid ( 0, 128, 255 );
 

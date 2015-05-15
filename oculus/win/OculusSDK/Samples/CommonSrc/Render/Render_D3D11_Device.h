@@ -26,9 +26,11 @@ limitations under the License.
 
 #include "Kernel/OVR_String.h"
 #include "Kernel/OVR_Array.h"
+#include "Util/Util_D3D11_Blitter.h"
 
 #include "../Render/Render_Device.h"
 
+#include "OVR_CAPI_D3D.h"
 #include "Util/Util_Direct3D.h"
 
 namespace OVR { namespace Render { namespace D3D11 {
@@ -147,41 +149,51 @@ public:
 class Texture : public Render::Texture
 {
 public:
+    ovrHmd                          Hmd;
     RenderDevice*                   Ren;
-    Ptr<ID3D11Texture2D>            Tex;
     // TODO: Add UAV...
-    Ptr<ID3D11ShaderResourceView>   TexSv;
-    Ptr<ID3D11RenderTargetView>     TexRtv;
-    Ptr<ID3D11DepthStencilView>     TexDsv;
-    Ptr<ID3D11Texture2D>			TexStaging;
+    ovrSwapTextureSet*              TextureSet;
+    ovrTexture*                     MirrorTex;
+    Ptr<ID3D11Texture2D>            Tex;
+    Array<Ptr<ID3D11ShaderResourceView>>    TexSv;
+    Array<Ptr<ID3D11RenderTargetView>>      TexRtv;
+    Array<Ptr<ID3D11DepthStencilView>>      TexDsv;
+    Array<Ptr<ID3D11Texture2D>>			    TexStaging;
     mutable Ptr<ID3D11SamplerState> Sampler;
     int                             Width, Height;
     int                             Samples;
     int                             Format;
 
-    Texture(RenderDevice* r, int fmt, int w, int h);
+    Texture(ovrHmd hmd, RenderDevice* r, int fmt, int w, int h);
     ~Texture();
 
-    virtual int GetWidth() const
+    Ptr<ID3D11Texture2D>        GetTex() const { return TextureSet ? ((ovrD3D11Texture*)&TextureSet->Textures[TextureSet->CurrentIndex])->D3D11.pTexture : Tex; }
+    Ptr<ID3D11ShaderResourceView> GetSv() const { return TextureSet ? TexSv[TextureSet->CurrentIndex] : TexSv[0]; }
+    Ptr<ID3D11RenderTargetView> GetRtv() const { return TextureSet ? TexRtv[TextureSet->CurrentIndex] : TexRtv[0]; }
+    Ptr<ID3D11DepthStencilView> GetDsv() const { return TextureSet ? TexDsv[TextureSet->CurrentIndex] : TexDsv[0]; }
+
+    virtual int GetWidth() const OVR_OVERRIDE
     {
         return Width;
     }
-    virtual int GetHeight() const
+    virtual int GetHeight() const OVR_OVERRIDE
     {
         return Height;
     }
-    virtual int GetSamples() const
+    virtual int GetSamples() const OVR_OVERRIDE
     {
         return Samples;
     }
 
-    virtual void SetSampleMode(int sm);
+    virtual void SetSampleMode(int sm) OVR_OVERRIDE;
 
-    virtual void Set(int slot, Render::ShaderStage stage = Render::Shader_Fragment) const;
+    virtual void Set(int slot, Render::ShaderStage stage = Render::Shader_Fragment) const OVR_OVERRIDE;
+
+    //virtual void* GetInternalImplementation() OVR_OVERRIDE;
 
     virtual ovrTexture Get_ovrTexture() OVR_OVERRIDE;
 
-    virtual void* GetInternalImplementation();
+    virtual ovrSwapTextureSet* Get_ovrTextureSet() OVR_OVERRIDE { return TextureSet; }
 };
 
 
@@ -229,49 +241,47 @@ public:
     Ptr<GeomShader>          pStereoShaders[Prim_Count];
     Ptr<Buffer>              CommonUniforms[8];
     Ptr<ShaderSet>           ExtraShaders;
+
     Ptr<ShaderFill>          DefaultFill;
+    Ptr<Fill>                DefaultTextureFill;
+    Ptr<Fill>                DefaultTextureFillAlpha;
+    Ptr<Fill>                DefaultTextureFillPremult;
 
     Ptr<Buffer>              QuadVertexBuffer;
 
     Array<Ptr<Texture> >     DepthBuffers;
+    Ptr<D3DUtil::Blitter>    Blitter;
 
 public:
-    RenderDevice(const RendererParams& p, HWND window);
+    RenderDevice(ovrHmd hmd, const RendererParams& p, HWND window);
     ~RenderDevice();
 
     // Implement static initializer function to create this class.
-    static Render::RenderDevice* CreateDevice(const RendererParams& rp, void* oswnd);
+    static Render::RenderDevice* CreateDevice(ovrHmd hmd, const RendererParams& rp, void* oswnd);
 
-    // if needRecreate == true it will recreate DXGIFactory and Adapter
-    // to get the latest info about monitors (including just connected/
-    // disconnected ones). Note, SwapChain will be released in this case
-    // and it should be recreated.
-    void         UpdateMonitorOutputs(bool needRecreate = false);
+    // Called to clear out texture fills by the app layer before it exits
+    virtual void DeleteFills() OVR_OVERRIDE;
 
-    virtual void SetViewport(const Recti& vp);
-    virtual void SetWindowSize(int w, int h);
-    virtual bool SetParams(const RendererParams& newParams);
+    virtual void SetViewport(const Recti& vp) OVR_OVERRIDE;
+    virtual void SetWindowSize(int w, int h) OVR_OVERRIDE;
+    virtual bool SetParams(const RendererParams& newParams) OVR_OVERRIDE;
 
-    // Returns details needed by CAPI distortion rendering.
-    virtual ovrRenderAPIConfig Get_ovrRenderAPIConfig() const;
+    virtual void Present(bool withVsync) OVR_OVERRIDE;
+    virtual void WaitUntilGpuIdle() OVR_OVERRIDE;
+    virtual void Flush() OVR_OVERRIDE;
 
-    virtual void Present(bool withVsync);
-    virtual void WaitUntilGpuIdle();
-    virtual void Flush();
-
-    virtual bool SetFullscreen(DisplayMode fullscreen);
-    virtual size_t QueryGPUMemorySize();
+    size_t QueryGPUMemorySize();
 
     virtual void Clear(float r = 0, float g = 0, float b = 0, float a = 1,
         float depth = 1,
-        bool clearColor = true, bool clearDepth = true);
-    virtual void Rect(float left, float top, float right, float bottom)
+        bool clearColor = true, bool clearDepth = true) OVR_OVERRIDE;
+    virtual void Rect(float left, float top, float right, float bottom) OVR_OVERRIDE
     {
         OVR_UNUSED4(left, top, right, bottom);
     }
 
-    virtual Buffer* CreateBuffer();
-    virtual Texture* CreateTexture(int format, int width, int height, const void* data, int mipcount = 1);
+    virtual Buffer* CreateBuffer() OVR_OVERRIDE;
+    virtual Texture* CreateTexture(int format, int width, int height, const void* data, int mipcount = 1) OVR_OVERRIDE;
 
     static void GenerateSubresourceData(
         unsigned imageWidth, unsigned imageHeight, int format, unsigned imageDimUpperLimit,
@@ -283,44 +293,47 @@ public:
 
     virtual void ResolveMsaa(Render::Texture* msaaTex, Render::Texture* outputTex) OVR_OVERRIDE;
 
-    virtual void BeginRendering();
+    virtual void BeginRendering() OVR_OVERRIDE;
     virtual void SetRenderTarget(Render::Texture* color,
-        Render::Texture* depth = NULL, Render::Texture* stencil = NULL);
-    virtual void SetDepthMode(bool enable, bool write, CompareFunc func = Compare_Less);
-    virtual void SetWorldUniforms(const Matrix4f& proj);
-    virtual void SetCommonUniformBuffer(int i, Render::Buffer* buffer);
-    virtual void SetExtraShaders(ShaderSet* s)
+        Render::Texture* depth = NULL, Render::Texture* stencil = NULL) OVR_OVERRIDE;
+    virtual void SetDepthMode(bool enable, bool write, CompareFunc func = Compare_Less) OVR_OVERRIDE;
+    virtual void SetWorldUniforms(const Matrix4f& proj) OVR_OVERRIDE;
+    virtual void SetCommonUniformBuffer(int i, Render::Buffer* buffer) OVR_OVERRIDE;
+    virtual void SetExtraShaders(ShaderSet* s) OVR_OVERRIDE
     {
         ExtraShaders = s;
     }
 
+    virtual void Blt(Render::Texture* texture) OVR_OVERRIDE;
+
     // Overridden to apply proper blend state.
-    virtual void FillRect(float left, float top, float right, float bottom, Color c, const Matrix4f* view = NULL);
-    virtual void FillGradientRect(float left, float top, float right, float bottom, Color col_top, Color col_btm, const Matrix4f* view);
-    virtual void RenderText(const struct Font* font, const char* str, float x, float y, float size, Color c, const Matrix4f* view = NULL);
-    virtual void RenderImage(float left, float top, float right, float bottom, ShaderFill* image, unsigned char alpha = 255, const Matrix4f* view = NULL);
+    virtual void FillRect(float left, float top, float right, float bottom, Color c, const Matrix4f* view = NULL) OVR_OVERRIDE;
+    virtual void FillGradientRect(float left, float top, float right, float bottom, Color col_top, Color col_btm, const Matrix4f* view) OVR_OVERRIDE;
+    virtual void RenderText(const struct Font* font, const char* str, float x, float y, float size, Color c, const Matrix4f* view = NULL) OVR_OVERRIDE;
+    virtual void RenderImage(float left, float top, float right, float bottom, ShaderFill* image, unsigned char alpha = 255, const Matrix4f* view = NULL) OVR_OVERRIDE;
 
-    virtual void Render(const Matrix4f& matrix, Model* model);
+    virtual void Render(const Matrix4f& matrix, Model* model) OVR_OVERRIDE;
     virtual void Render(const Fill* fill, Render::Buffer* vertices, Render::Buffer* indices,
-        const Matrix4f& matrix, int offset, int count, PrimitiveType prim = Prim_Triangles, MeshType meshType = Mesh_Scene);
+        const Matrix4f& matrix, int offset, int count, PrimitiveType prim = Prim_Triangles, MeshType meshType = Mesh_Scene) OVR_OVERRIDE;
     virtual void RenderWithAlpha(const Fill* fill, Render::Buffer* vertices, Render::Buffer* indices,
-        const Matrix4f& matrix, int offset, int count, PrimitiveType prim = Prim_Triangles);
-    virtual void RenderCompute(const Fill* fill, Render::Buffer* buffer, int invocationSizeInPixels);
-    virtual Fill *CreateSimpleFill(int flags = Fill::F_Solid);
+        const Matrix4f& matrix, int offset, int count, PrimitiveType prim = Prim_Triangles) OVR_OVERRIDE;
+    virtual void RenderCompute(const Fill* fill, Render::Buffer* buffer, int invocationSizeInPixels) OVR_OVERRIDE;
+    virtual Fill *GetSimpleFill(int flags = Fill::F_Solid) OVR_OVERRIDE;
+    virtual Fill *GetTextureFill(Render::Texture* tex, bool useAlpha = false, bool usePremult = false) OVR_OVERRIDE;
 
-    virtual Render::Shader *LoadBuiltinShader(ShaderStage stage, int shader);
+    virtual Render::Shader *LoadBuiltinShader(ShaderStage stage, int shader) OVR_OVERRIDE;
 
     bool RecreateSwapChain();
     virtual ID3D10Blob* CompileShader(const char* profile, const char* src, const char* mainName = "main");
-    virtual ShaderBase* CreateStereoShader(PrimitiveType prim, Render::Shader* vs);
+    virtual ShaderBase* CreateStereoShader(PrimitiveType prim, Render::Shader* vs) OVR_OVERRIDE;
 
     ID3D11SamplerState* GetSamplerState(int sm);
 
     void SetTexture(Render::ShaderStage stage, int slot, const Texture* t);
 
     // GPU Profiling
-    virtual void BeginGpuEvent(const char* markerText, uint32_t markerColor);
-    virtual void EndGpuEvent();
+    virtual void BeginGpuEvent(const char* markerText, uint32_t markerColor) OVR_OVERRIDE;
+    virtual void EndGpuEvent() OVR_OVERRIDE;
 };
 
 
